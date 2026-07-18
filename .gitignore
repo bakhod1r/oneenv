@@ -1,0 +1,48 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# Editors
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+
+# Go
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+go.work
+go.work.sum
+vendor/
+bin/
+
+
+# Logs*.log
+logs/
+*.log
+
+
+# Build
+dist/
+build/
+coverage/
+
+
+main
+main/*
+
+# Build artifacts
+/oneenv
+ssa.html
