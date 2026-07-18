@@ -44,3 +44,24 @@ func TestRunMissingFile(t *testing.T) {
 		t.Fatal("expected error for missing file")
 	}
 }
+
+func TestRunExample(t *testing.T) {
+	dir := t.TempDir()
+	f := filepath.Join(dir, ".env")
+	if err := os.WriteFile(f, []byte("# foo token\nFOO=secret\nBAR=1\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	out := filepath.Join(dir, ".env.example")
+	if err := run([]string{"-f", f, "-example", "-o", out}); err != nil {
+		t.Fatalf("run example: %v", err)
+	}
+	got, err := os.ReadFile(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "# type: int\n# required: this field\nBAR=\n\n" +
+		"# foo token\n# type: string\n# required: this field\nFOO=\n"
+	if string(got) != want {
+		t.Fatalf("got %q, want %q", got, want)
+	}
+}

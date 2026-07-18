@@ -10,6 +10,7 @@
 //	oneenv                        # print merged .env as KEY=VALUE
 //	oneenv -f .env -f .env.local  # merge several files
 //	oneenv -json                  # print as JSON
+//	oneenv -example               # write .env.example (keys only, values stripped)
 //	oneenv -- go run ./...        # run a command with the env loaded
 package main
 
@@ -20,7 +21,9 @@ import (
 	"os"
 	"os/exec"
 	"sort"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/bakhod1r/oneenv"
 )
@@ -42,6 +45,8 @@ func run(args []string) error {
 		files    fileList
 		asJSON   bool
 		override bool
+		example  bool
+		exOut    string
 	)
 
 	// Split flags from the optional "-- command...".
@@ -55,11 +60,17 @@ func run(args []string) error {
 	fs.Var(&files, "f", "env file to read (repeatable)")
 	fs.BoolVar(&asJSON, "json", false, "print merged variables as JSON")
 	fs.BoolVar(&override, "override", false, "let file values override the environment")
+	fs.BoolVar(&example, "example", false, "write a value-stripped example of the .env files")
+	fs.StringVar(&exOut, "o", ".env.example", `output path for -example ("-" for stdout)`)
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 	if len(files) == 0 {
 		files = fileList{".env"}
+	}
+
+	if example {
+		return writeExample(files, exOut)
 	}
 
 	if len(cmd) > 0 {
@@ -71,6 +82,98 @@ func run(args []string) error {
 		return err
 	}
 	return printVals(vals, asJSON)
+}
+
+// writeExample reads the .env files and writes them back with every value
+// stripped, producing a shareable .env.example. dst of "-" means stdout.
+func writeExample(files fileList, dst string) error {
+	vals, err := oneenv.Read(files...)
+	if err != nil {
+		return err
+	}
+	keys := make([]string, 0, len(vals))
+	for k := range vals {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	comments := readComments(files)
+
+	var sb strings.Builder
+	for i, k := range keys {
+		if i > 0 {
+			sb.WriteByte('\n')
+		}
+		for _, c := range comments[k] {
+			sb.WriteString(c)
+			sb.WriteByte('\n')
+		}
+		sb.WriteString("# type: ")
+		sb.WriteString(inferType(vals[k]))
+		sb.WriteString("\n# required: this field\n")
+		sb.WriteString(k)
+		sb.WriteString("=\n")
+	}
+	if dst == "-" {
+		_, err := os.Stdout.WriteString(sb.String())
+		return err
+	}
+	return os.WriteFile(dst, []byte(sb.String()), 0o644)
+}
+
+// readComments scans the raw .env files and returns, per key, the comment
+// lines that sit directly above it. Later files win for a repeated key.
+func readComments(files fileList) map[string][]string {
+	out := make(map[string][]string)
+	for _, f := range files {
+		data, err := os.ReadFile(f)
+		if err != nil {
+			continue
+		}
+		var pending []string
+		for _, line := range strings.Split(string(data), "\n") {
+			line = strings.TrimSpace(line)
+			switch {
+			case line == "":
+				pending = nil
+			case strings.HasPrefix(line, "#"):
+				pending = append(pending, line)
+			default:
+				kv := strings.TrimPrefix(line, "export ")
+				if k, _, ok := strings.Cut(kv, "="); ok {
+					k = strings.TrimSpace(k)
+					if len(pending) > 0 {
+						out[k] = pending
+					}
+				}
+				pending = nil
+			}
+		}
+	}
+	return out
+}
+
+// inferType guesses a value's type from its shape, for the -example comments.
+func inferType(v string) string {
+	switch {
+	case v == "":
+		return "string"
+	case v == "true" || v == "false":
+		return "bool"
+	default:
+		if _, err := strconv.Atoi(v); err == nil {
+			return "int"
+		}
+		if _, err := strconv.ParseFloat(v, 64); err == nil {
+			return "float"
+		}
+		if _, err := time.ParseDuration(v); err == nil {
+			return "duration"
+		}
+		if strings.Contains(v, "://") {
+			return "url"
+		}
+		return "string"
+	}
 }
 
 func execWith(files fileList, override bool, cmd []string) error {

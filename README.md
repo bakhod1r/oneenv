@@ -538,6 +538,34 @@ PORT  int            no        8080     listen port
 HOST  string         yes                bind host
 ```
 
+## Example — generate `.env.example`
+
+`Example[T]` writes a ready-to-fill `.env.example` for the variables a struct
+consumes: each key with its default (empty when none), preceded by the `desc`
+tag, the type, and whether it's required. Secret defaults are never written.
+
+```go
+oneenv.Example[Config](os.Stdout)
+```
+
+```text
+# listen port
+# type: int
+PORT=8080
+
+# bind host
+# type: string, required
+HOST=
+```
+
+The CLI can also produce one from your existing `.env` files — keys are kept,
+values stripped:
+
+```sh
+oneenv -example            # writes .env.example next to you
+oneenv -f .env -example -o -   # print to stdout
+```
+
 ## Testing without global state
 
 The decoder never touches `os.Getenv` directly — everything flows through a

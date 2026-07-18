@@ -5,6 +5,19 @@ All notable changes to **oneenv** are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2026-07-19
+
+### Added
+
+- **`Example[T]`** — generates a ready-to-fill `.env.example` from a struct:
+  each key with its default, preceded by comments carrying the `desc` tag, the
+  Go type, and whether it is required. Defaults of `secret` fields are never
+  written.
+- **CLI `-example` flag** — `oneenv -example` writes a `.env.example` from the
+  merged `.env` files: keys kept, values stripped, original comments above each
+  key preserved, plus inferred-type and required comments. `-o` sets the output
+  path (`-` for stdout, default `.env.example`).
+
 ## [1.0.0] - 2026-07-18
 
 Initial release: a zero-dependency `.env` parser and struct decoder in one
