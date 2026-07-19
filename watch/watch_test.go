@@ -26,8 +26,17 @@ func TestWatchReloads(t *testing.T) {
 	reloaded := make(chan string, 4)
 
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	// Cancel the watcher and wait for its goroutine to fully return before the
+	// test exits. Leaving the goroutine running while the test binary writes
+	// coverage counters on shutdown can corrupt them ("reading counter data
+	// file: EOF") and fail the run under -cover.
+	done := make(chan struct{})
+	defer func() {
+		cancel()
+		<-done
+	}()
 	go func() {
+		defer close(done)
 		_ = Watch(ctx, &cfg, func(error) { reloaded <- cfg.Value },
 			oneenv.WithFiles(env), oneenv.WithLookuper(oneenv.MapLookuper{}))
 	}()
