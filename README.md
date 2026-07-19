@@ -640,15 +640,17 @@ Go 1.26, `-count=5` medians:
 
 | Library | ns/op | B/op | allocs/op | vs oneenv |
 |---|---:|---:|---:|---:|
-| **oneenv** | **708** | **872** | **20** | **1.0×** |
-| `godotenv` + `sethvargo/go-envconfig` | 1,810 | 960 | 35 | 2.6× |
-| `godotenv` + `joeshaw/envdecode` | 2,337 | 1,617 | 45 | 3.3× |
-| `godotenv` + `ilyakaznacheev/cleanenv` | 3,747 | 3,592 | 85 | 5.3× |
-| `godotenv` + `kelseyhightower/envconfig` | 3,914 | 2,952 | 121 | 5.5× |
-| `spf13/viper` | 7,479 | 12,359 | 135 | 10.6× |
-| `godotenv` + `caarlos0/env` v11 | 7,539 | 15,374 | 147 | 10.6× |
+| **oneenv** | **1,124** | **872** | **20** | **1.0×** |
+| `sethvargo/go-envconfig` | 2,831 | 960 | 35 | 2.5× |
+| `joeshaw/envdecode` | 3,594 | 1,700 | 45 | 3.2× |
+| `ilyakaznacheev/cleanenv` | 5,796 | 3,592 | 85 | 5.2× |
+| `kelseyhightower/envconfig` | 5,927 | 2,950 | 121 | 5.3× |
+| `spf13/viper` | 11,520 | 12,360 | 135 | 10.2× |
+| `caarlos0/env` v11 | 11,944 | 15,570 | 149 | 10.6× |
 
-`oneenv` is the fastest and lightest of the group — **2.6–10.6× faster** with
+<img src="assets/benchmarks.png" alt="oneenv benchmark chart showing 1.1k ns/op vs competitors" width="600" />
+
+`oneenv` is the fastest and lightest of the group — **2.5–10.6× faster** with
 the fewest allocations (up to **17× less** memory than `caarlos0/env`), because
 it parses and decodes in a single pass over a struct schema that is compiled
 once and cached. Reproduce:
