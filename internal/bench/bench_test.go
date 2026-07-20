@@ -47,6 +47,15 @@ func loadEnvInLoop() map[string]string {
 	return m
 }
 
+// loadSample parses an arbitrary .env sample into os.Environ. Caller unsets.
+func loadSample(s string) map[string]string {
+	m, _ := godotenv.Parse(strings.NewReader(s))
+	for k, v := range m {
+		_ = os.Setenv(k, v)
+	}
+	return m
+}
+
 func unset(m map[string]string) {
 	for k := range m {
 		_ = os.Unsetenv(k)
