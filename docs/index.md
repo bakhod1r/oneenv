@@ -5,7 +5,7 @@ nav_order: 1
 ---
 
 <p align="center">
-  <img src="assets/logo.svg" alt="oneenv" width="420">
+  <img src="{{ site.baseurl }}/assets/logo.svg" alt="oneenv" width="420">
 </p>
 
 # oneenv

@@ -17,6 +17,9 @@ search:
 
 heading_anchors: true
 
+# Extensionless URLs (/options/), which the in-page cross links rely on.
+permalink: pretty
+
 aux_links:
   GitHub: https://github.com/bakhod1r/oneenv
   pkg.go.dev: https://pkg.go.dev/github.com/bakhod1r/oneenv

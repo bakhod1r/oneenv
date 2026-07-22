@@ -17,7 +17,7 @@ timing.
 goversion: 1.26.2   goos: darwin   goarch: arm64   cpu: Apple M4 Pro   -count=5 (medians)
 ```
 
-<img src="assets/benchmarks.png" alt="oneenv benchmark: small, medium and large config sizes vs competitors" style="max-width:100%">
+<img src="{{ site.baseurl }}/assets/benchmarks.png" alt="oneenv benchmark: small, medium and large config sizes vs competitors" style="max-width:100%">
 
 ## Small — 5 keys
 
