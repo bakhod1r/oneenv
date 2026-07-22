@@ -46,3 +46,8 @@ main/*
 # Build artifacts
 /oneenv
 ssa.html
+
+# Docs site (generated at build time from CHANGELOG.md)
+docs/_site/
+docs/.jekyll-cache/
+docs/changelog.md

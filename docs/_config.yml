@@ -1,0 +1,32 @@
+title: oneenv
+description: Parse .env files straight into your Go structs — zero dependencies, pure stdlib.
+url: https://bakhod1r.github.io
+baseurl: /oneenv
+
+remote_theme: just-the-docs/just-the-docs
+
+plugins:
+  - jekyll-remote-theme
+  - jekyll-seo-tag
+
+color_scheme: dark
+search_enabled: true
+search:
+  heading_level: 3
+  previews: 2
+
+heading_anchors: true
+
+aux_links:
+  GitHub: https://github.com/bakhod1r/oneenv
+  pkg.go.dev: https://pkg.go.dev/github.com/bakhod1r/oneenv
+aux_links_new_tab: true
+
+nav_external_links:
+  - title: View on GitHub
+    url: https://github.com/bakhod1r/oneenv
+
+footer_content: 'MIT © <a href="https://github.com/bakhod1r">bakhod1r</a>'
+
+exclude:
+  - vendor

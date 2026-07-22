@@ -12,6 +12,8 @@
 [![Go Version](https://img.shields.io/badge/go-1.26%2B-00ADD8?logo=go)](go.mod)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
+**[📖 Full documentation](https://bakhod1r.github.io/oneenv/)**
+
 </div>
 
 ---
