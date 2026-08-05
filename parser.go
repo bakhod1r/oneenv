@@ -10,15 +10,35 @@ import (
 type parser struct {
 	file   string
 	expand bool
+	strict bool
 	src    []byte
 	pos    int
 	line   int
+	// raw collects the pre-expansion form of every value, so fields that opt out
+	// of expansion (secrets, ",noexpand") can be decoded from the literal text.
+	// It is nil when expansion is off, since raw and expanded then coincide.
+	raw map[string]string
 }
 
 // parse scans src and writes each key/value into out. On a syntax error it
 // returns a *ParseError with the offending line.
 func parse(file string, src []byte, expand bool, out map[string]string) error {
-	p := &parser{file: file, expand: expand, src: src, line: 1}
+	return parseInto(file, src, expandOptions{enabled: expand}, out, nil)
+}
+
+// expandOptions carries the expansion behavior for one parse.
+type expandOptions struct {
+	enabled bool
+	strict  bool
+}
+
+// parseInto is parse with the literal, pre-expansion values also collected into
+// raw when raw is non-nil.
+func parseInto(file string, src []byte, exp expandOptions, out, raw map[string]string) error {
+	p := &parser{file: file, expand: exp.enabled, strict: exp.strict, src: src, line: 1}
+	if exp.enabled {
+		p.raw = raw
+	}
 	for {
 		p.skipInsignificant()
 		if p.pos >= len(p.src) {
@@ -62,12 +82,15 @@ func (p *parser) statement(out map[string]string) error {
 		return err
 	}
 
-	value, err := p.value(out)
+	value, literal, err := p.value(out)
 	if err != nil {
 		return err
 	}
 
 	out[key] = value
+	if p.raw != nil {
+		p.raw[key] = literal
+	}
 	return nil
 }
 
@@ -115,25 +138,40 @@ func (p *parser) key() (string, error) {
 }
 
 // value parses the right-hand side, handling quotes, escapes, inline comments
-// and optional expansion.
-func (p *parser) value(vars map[string]string) (string, error) {
+// and optional expansion. It returns the final value and its literal,
+// pre-expansion form.
+func (p *parser) value(vars map[string]string) (value, literal string, err error) {
 	p.skipSpaces()
 	if p.pos >= len(p.src) {
-		return "", nil
+		return "", "", nil
 	}
 
 	switch p.src[p.pos] {
 	case '\'':
-		return p.singleQuoted()
+		v, err := p.singleQuoted()
+		return v, v, err
 	case '"':
 		return p.doubleQuoted(vars)
 	default:
-		return p.unquoted(vars), nil
+		return p.unquoted(vars)
 	}
 }
 
+// expandValue applies expansion to s when it is enabled, reporting an undefined
+// reference as a *ParseError under strict mode.
+func (p *parser) expandValue(s string, vars map[string]string) (string, error) {
+	if !p.expand {
+		return s, nil
+	}
+	v, err := expand(s, vars, p.strict)
+	if err != nil {
+		return "", &ParseError{File: p.file, Line: p.line, Msg: err.Error(), Err: err}
+	}
+	return v, nil
+}
+
 // unquoted reads until end of line, stripping a trailing " # comment".
-func (p *parser) unquoted(vars map[string]string) string {
+func (p *parser) unquoted(vars map[string]string) (value, literal string, err error) {
 	start := p.pos
 	for p.pos < len(p.src) && p.src[p.pos] != '\n' {
 		p.pos++
@@ -144,11 +182,9 @@ func (p *parser) unquoted(vars map[string]string) string {
 	if i := inlineCommentIndex(raw); i >= 0 {
 		raw = raw[:i]
 	}
-	v := strings.TrimRight(strings.TrimLeft(string(raw), " \t"), " \t\r")
-	if p.expand {
-		v = expand(v, vars)
-	}
-	return v
+	literal = strings.TrimRight(strings.TrimLeft(string(raw), " \t"), " \t\r")
+	value, err = p.expandValue(literal, vars)
+	return value, literal, err
 }
 
 // singleQuoted reads a raw single-quoted value; no escapes, no expansion.
@@ -172,7 +208,7 @@ func (p *parser) singleQuoted() (string, error) {
 
 // doubleQuoted reads a double-quoted value, honoring backslash escapes,
 // multiline content and (optionally) variable expansion.
-func (p *parser) doubleQuoted(vars map[string]string) (string, error) {
+func (p *parser) doubleQuoted(vars map[string]string) (value, literal string, err error) {
 	p.pos++ // opening quote
 	var b strings.Builder
 	for p.pos < len(p.src) {
@@ -181,10 +217,8 @@ func (p *parser) doubleQuoted(vars map[string]string) (string, error) {
 		case '"':
 			p.pos++ // closing quote
 			s := b.String()
-			if p.expand {
-				s = expand(s, vars)
-			}
-			return s, nil
+			v, err := p.expandValue(s, vars)
+			return v, s, err
 		case '\\':
 			if p.pos+1 < len(p.src) {
 				p.pos++
@@ -200,7 +234,7 @@ func (p *parser) doubleQuoted(vars map[string]string) (string, error) {
 		}
 		p.pos++
 	}
-	return "", p.errf("unterminated double-quoted value")
+	return "", "", p.errf("unterminated double-quoted value")
 }
 
 func (p *parser) errf(format string, args ...any) error {

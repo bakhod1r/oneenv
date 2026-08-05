@@ -54,10 +54,13 @@ func unescape(c byte) byte {
 }
 
 // expand replaces ${VAR} and $VAR references, resolving first against vars
-// parsed so far and then against the process environment.
-func expand(s string, vars map[string]string) string {
+// parsed so far and then against the process environment. When strict is set,
+// a reference to a variable that resolves nowhere is an error instead of an
+// empty string, so a typo or an unescaped '$' in a literal value cannot
+// silently blank the value out.
+func expand(s string, vars map[string]string, strict bool) (string, error) {
 	if !strings.ContainsRune(s, '$') {
-		return s
+		return s, nil
 	}
 	var b strings.Builder
 	for i := 0; i < len(s); {
@@ -78,10 +81,14 @@ func expand(s string, vars map[string]string) string {
 			i++
 			continue
 		}
-		b.WriteString(resolve(name, vars))
+		v, ok := resolve(name, vars)
+		if !ok && strict {
+			return "", fmt.Errorf("%w: %q", ErrUnknownVariable, name)
+		}
+		b.WriteString(v)
 		i = next
 	}
-	return b.String()
+	return b.String(), nil
 }
 
 // readVarName parses a variable reference starting just after '$'. It supports
@@ -101,12 +108,12 @@ func readVarName(s string, i int) (name string, next int) {
 	return s[start:i], i
 }
 
-func resolve(name string, vars map[string]string) string {
+func resolve(name string, vars map[string]string) (string, bool) {
 	if v, ok := vars[name]; ok {
-		return v
+		return v, true
 	}
 	if v, ok := os.LookupEnv(name); ok {
-		return v
+		return v, true
 	}
-	return ""
+	return "", false
 }

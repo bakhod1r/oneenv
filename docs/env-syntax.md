@@ -27,6 +27,15 @@ LITERAL='$NOT_EXPANDED'         # single quotes never expand
 - **Quotes** — double quotes honour escapes and can span multiple lines; single quotes are literal.
 - **Expansion** — `${VAR}` and `$VAR` are expanded (when `WithExpand()` is set) against values already parsed in the file, falling back to the process environment. Write `$$` for a literal `$`.
 
+> **Passwords and expansion.** Expansion applies to the *value text*, so a
+> password containing `$` is rewritten: `pa$$word` becomes `pa$word`, `pa$word`
+> becomes `pa`, and `$ecret123` becomes the empty string. Keep secrets out of
+> expansion in one of these ways:
+>
+> - declare the field as `oneenv.Secret[T]`, or tag it `,secret` / `,noexpand` — those are never expanded;
+> - single-quote the value in the file: `DB_PASSWORD='pa$$word'`;
+> - use `WithExpandStrict()`, which turns an undefined reference into an `ErrUnknownVariable` parse error instead of a silently blanked value.
+
 Syntax errors come back as a [`*ParseError`](errors) carrying the file name and
 line number.
 

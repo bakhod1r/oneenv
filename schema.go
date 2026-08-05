@@ -23,6 +23,7 @@ type fieldPlan struct {
 	initField   bool         // initialize nil pointer/slice/map even when unset
 	unset       bool         // remove the variable from the process env after reading
 	secret      bool         // value is sensitive: masked by Redacted output
+	noExpand    bool         // decode the literal value, never the expanded one
 	nested      bool         // field is a struct to recurse into
 	nestedSlice bool         // field is a []struct decoded from indexed keys (KEY_0_*, KEY_1_*)
 	structType  reflect.Type // struct type to recurse into (nested) or element type (nestedSlice)
@@ -111,7 +112,10 @@ func buildSchema(t reflect.Type, cfg config) (*structSchema, error) {
 		plan.fromFile = boolTag(f, "env-file", opts.fromFile)
 		plan.initField = boolTag(f, "env-init", opts.initField)
 		plan.unset = boolTag(f, "env-unset", opts.unset)
-		plan.secret = boolTag(f, "env-secret", opts.secret)
+		plan.secret = boolTag(f, "env-secret", opts.secret) || isSecretType(ft)
+		// Secrets never take part in expansion: a '$' in a password is data, not
+		// a variable reference. ",noexpand" opts a non-secret field out too.
+		plan.noExpand = boolTag(f, "env-noexpand", opts.noExpand) || plan.secret
 		// The env-* form always takes priority; the native tag is the fallback,
 		// and for the separator so is envSeparator.
 		plan.desc = firstNonEmpty(f.Tag.Get("env-description"), f.Tag.Get("desc"))
@@ -188,6 +192,7 @@ type tagOpts struct {
 	initField bool
 	unset     bool
 	secret    bool
+	noExpand  bool
 }
 
 // parseTag splits a struct tag value like "NAME,required,notEmpty" into name
@@ -212,6 +217,8 @@ func parseTag(tag string) (name string, opts tagOpts) {
 			opts.unset = true
 		case "secret":
 			opts.secret = true
+		case "noexpand", "noExpand":
+			opts.noExpand = true
 		}
 	}
 	return name, opts

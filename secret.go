@@ -14,6 +14,20 @@ import "reflect"
 //	client.Use(cfg.APIKey.Value()) // the real key
 type Secret[T any] struct{ v T }
 
+// secretMarker is implemented by Secret[T] only. It lets the schema builder
+// recognize a secret field by type, so Secret values are automatically excluded
+// from ${VAR} expansion without needing a ",secret" tag.
+type secretMarker interface{ isOneenvSecret() }
+
+func (Secret[T]) isOneenvSecret() {}
+
+// isSecretType reports whether t is a Secret[T].
+func isSecretType(t reflect.Type) bool {
+	return t.Kind() == reflect.Struct && reflect.PointerTo(t).Implements(secretMarkerType)
+}
+
+var secretMarkerType = reflect.TypeFor[secretMarker]()
+
 // NewSecret wraps v in a Secret.
 func NewSecret[T any](v T) Secret[T] { return Secret[T]{v: v} }
 

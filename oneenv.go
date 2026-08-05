@@ -20,11 +20,11 @@ func Load(v any, opts ...Option) error {
 		files = envFileCascade(cfg.files, resolveEnvName(cfg))
 		missingOK = true // every file in the cascade is optional
 	}
-	vals, err := readFiles(files, cfg.expand, missingOK)
+	vals, raw, err := readFilesRaw(files, cfg.expandOptions(), missingOK)
 	if err != nil {
 		return err
 	}
-	return decode(v, cfg, vals)
+	return decode(v, cfg, vals, raw)
 }
 
 // LoadContext behaves like Load but threads ctx through to any mutators
@@ -55,13 +55,13 @@ func Parse[T any](opts ...Option) (*T, error) {
 // still apply.
 func Unmarshal(data []byte, v any, opts ...Option) error {
 	cfg := newConfig(opts)
-	vals := make(map[string]string)
-	if err := parse("", data, cfg.expand, vals); err != nil {
+	vals, raw := make(map[string]string), make(map[string]string)
+	if err := parseInto("", data, cfg.expandOptions(), vals, raw); err != nil {
 		return err
 	}
 	// Decode against the file values only.
 	cfg.lookuper = MapLookuper{}
-	return decode(v, cfg, vals)
+	return decode(v, cfg, vals, raw)
 }
 
 // Read parses one or more .env files and returns the merged key/value map,
@@ -113,20 +113,27 @@ func loadEnv(filenames []string, override bool) error {
 // false, a missing file is an error; the default ".env" is treated as
 // optional so zero-config Load works without a file present.
 func readFiles(filenames []string, expand, missingOK bool) (map[string]string, error) {
-	out := make(map[string]string)
+	out, _, err := readFilesRaw(filenames, expandOptions{enabled: expand}, missingOK)
+	return out, err
+}
+
+// readFilesRaw is readFiles that also returns the literal, pre-expansion values,
+// used to decode fields that opt out of expansion.
+func readFilesRaw(filenames []string, exp expandOptions, missingOK bool) (out, raw map[string]string, err error) {
+	out, raw = make(map[string]string), make(map[string]string)
 	for _, name := range filenames {
 		data, err := os.ReadFile(name)
 		if err != nil {
 			if os.IsNotExist(err) && (missingOK || isDefaultFile(filenames, name)) {
 				continue
 			}
-			return nil, err
+			return nil, nil, err
 		}
-		if err := parse(name, data, expand, out); err != nil {
-			return nil, err
+		if err := parseInto(name, data, exp, out, raw); err != nil {
+			return nil, nil, err
 		}
 	}
-	return out, nil
+	return out, raw, nil
 }
 
 // isDefaultFile reports whether name is the implicit ".env" default, which is

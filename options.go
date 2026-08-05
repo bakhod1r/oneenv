@@ -20,6 +20,7 @@ type config struct {
 	prefix       string
 	override     bool
 	expand       bool
+	expandStrict bool
 	requiredAll  bool
 	tagKey       string
 	lookuper     Lookuper
@@ -27,6 +28,11 @@ type config struct {
 	mutators     []Mutator
 	validator    func(any) error
 	ctx          context.Context
+}
+
+// expandOptions returns the parser-facing view of the expansion settings.
+func (c config) expandOptions() expandOptions {
+	return expandOptions{enabled: c.expand, strict: c.expandStrict}
 }
 
 // Mutator transforms a raw value after lookup and before it is decoded into a
@@ -94,8 +100,26 @@ func WithOverride() Option {
 }
 
 // WithExpand enables ${VAR} and $VAR expansion inside values.
+//
+// Expansion never applies to fields that opt out: a field marked ",secret"
+// (or env-secret:"true"), or any Secret[T] field, or a field marked
+// ",noexpand". Those decode from the literal text in the file, so a password
+// containing '$' survives intact. Single-quoted values are also never expanded,
+// matching POSIX shell.
+//
+// A reference to a variable that is defined nowhere expands to the empty
+// string. Use WithExpandStrict to make that an error instead.
 func WithExpand() Option {
 	return func(c *config) { c.expand = true }
+}
+
+// WithExpandStrict enables expansion like WithExpand, but a reference to a
+// variable that resolves neither against an earlier key in the file nor against
+// the process environment fails with ErrUnknownVariable instead of silently
+// expanding to "". This turns a value such as "$ecret123" from a value that
+// quietly vanishes into a parse error naming the line.
+func WithExpandStrict() Option {
+	return func(c *config) { c.expand, c.expandStrict = true, true }
 }
 
 // WithRequired treats every field as required, as if each carried the

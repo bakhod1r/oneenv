@@ -262,8 +262,8 @@ func TestExpansion(t *testing.T) {
 }
 
 func TestResolveMissing(t *testing.T) {
-	if got := resolve("DEFINITELY_MISSING_VAR_XYZ", nil); got != "" {
-		t.Fatalf("got %q", got)
+	if got, ok := resolve("DEFINITELY_MISSING_VAR_XYZ", nil); got != "" || ok {
+		t.Fatalf("got %q, ok=%v", got, ok)
 	}
 }
 
@@ -601,8 +601,8 @@ func TestMultipleTypeParsers(t *testing.T) {
 }
 
 func TestExpandNoDollarFastPath(t *testing.T) {
-	if got := expand("plain", nil); got != "plain" {
-		t.Fatalf("got %q", got)
+	if got, err := expand("plain", nil, false); got != "plain" || err != nil {
+		t.Fatalf("got %q, err=%v", got, err)
 	}
 }
 

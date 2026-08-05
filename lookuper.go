@@ -25,6 +25,22 @@ func (m MapLookuper) Lookup(key string) (string, bool) {
 	return v, ok
 }
 
+// rawLookuper is implemented by sources that can also return the literal,
+// pre-expansion form of a value. The decoder uses it for fields that opt out of
+// expansion, so a secret containing '$' is decoded exactly as written.
+type rawLookuper interface {
+	LookupRaw(key string) (value string, ok bool)
+}
+
+// lookupRaw returns the literal value for key when src can provide one, falling
+// back to the ordinary lookup otherwise.
+func lookupRaw(src Lookuper, key string) (string, bool) {
+	if r, ok := src.(rawLookuper); ok {
+		return r.LookupRaw(key)
+	}
+	return src.Lookup(key)
+}
+
 // PrefixLookuper strips a fixed prefix off every key before delegating.
 type PrefixLookuper struct {
 	Prefix string
@@ -34,6 +50,12 @@ type PrefixLookuper struct {
 // Lookup implements Lookuper.
 func (p PrefixLookuper) Lookup(key string) (string, bool) {
 	return p.Next.Lookup(p.Prefix + key)
+}
+
+// LookupRaw implements rawLookuper, propagating the request down the chain so a
+// prefixed or nested field can still opt out of expansion.
+func (p PrefixLookuper) LookupRaw(key string) (string, bool) {
+	return lookupRaw(p.Next, p.Prefix+key)
 }
 
 // multiLookuper consults each Lookuper in order and returns the first hit.

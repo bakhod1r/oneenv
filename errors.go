@@ -26,6 +26,12 @@ var (
 	// ErrSecretFile is returned (wrapped in a FieldError) when a field marked
 	// ",file" names a path that cannot be read.
 	ErrSecretFile = errors.New("oneenv: cannot read secret file")
+
+	// ErrUnknownVariable is returned (wrapped in a ParseError) when strict
+	// expansion is enabled via WithExpandStrict and a value references a
+	// variable that is defined neither earlier in the file nor in the process
+	// environment.
+	ErrUnknownVariable = errors.New("oneenv: reference to undefined variable")
 )
 
 // ParseError describes a syntax error in a .env source, with position.
@@ -33,6 +39,7 @@ type ParseError struct {
 	File string // file name, empty for in-memory sources
 	Line int    // 1-based line number
 	Msg  string // human readable message
+	Err  error  // underlying cause, when there is one
 }
 
 func (e *ParseError) Error() string {
@@ -42,6 +49,8 @@ func (e *ParseError) Error() string {
 	}
 	return fmt.Sprintf("oneenv: %s:%d: %s", loc, e.Line, e.Msg)
 }
+
+func (e *ParseError) Unwrap() error { return e.Err }
 
 // FieldError associates a decoding failure with the struct field and env key
 // that produced it. Retrieve it from a Load error with errors.As.

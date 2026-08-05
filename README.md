@@ -205,7 +205,8 @@ options are applied in order, and a later option wins over an earlier one.
 | `WithEnvVar(names...)` | Which env variables name the active environment for `WithEnvFiles` (default `APP_ENV`, then `GO_ENV`). |
 | `WithPrefix(p)` | Restrict lookups to keys carrying a prefix, e.g. `APP_` maps `env:"PORT"` to `APP_PORT`. |
 | `WithOverride()` | Let `.env` values overwrite variables already in the process env (default: existing wins). |
-| `WithExpand()` | Enable `${VAR}` / `$VAR` expansion inside values. |
+| `WithExpand()` | Enable `${VAR}` / `$VAR` expansion inside values. Secret and `,noexpand` fields are never expanded. |
+| `WithExpandStrict()` | As `WithExpand()`, but a reference to an undefined variable fails with `ErrUnknownVariable` instead of expanding to `""`. |
 | `WithRequired()` | Treat every field as required, as if each carried `,required`. |
 | `WithTagKey(k)` | Change the struct tag key (default `env`). |
 | `WithLookuper(l)` | Swap the env source — pass a `MapLookuper` for hermetic tests. |
@@ -240,7 +241,8 @@ type Config struct {
 | `env:"NAME,file"` | string-ish | Treat the resolved value as a **path** and read the file's contents as the real value. |
 | `env:"NAME,init"` | pointer / slice / map | Allocate a non-nil zero value even when no value is supplied. |
 | `env:"NAME,unset"` | any field | Remove the variable from the process environment after reading it. |
-| `env:"NAME,secret"` | any field | Mask the value in `Redacted` / `RedactedMap` output (plain `Marshal` keeps it). |
+| `env:"NAME,secret"` | any field | Mask the value in `Redacted` / `RedactedMap` output (plain `Marshal` keeps it). Also excludes the value from `${VAR}` expansion. |
+| `env:"NAME,noexpand"` | any field | Never apply `${VAR}` / `$VAR` expansion to this value; decode the literal text. Implied by `,secret` and by `Secret[T]`. |
 | `default:"..."` | any field | Fallback value when nothing else provides one. |
 | `separator:","` | slice / map | Element separator. `envSeparator` is accepted as an alias. |
 | `layout:"..."` | `time.Time` | `time.Parse` layout (default `time.RFC3339`). |
@@ -266,6 +268,8 @@ convention can be used throughout:
 | `env:"NAME,file"` | `env-file:"true"` |
 | `env:"NAME,init"` | `env-init:"true"` |
 | `env:"NAME,unset"` | `env-unset:"true"` |
+| `env:"NAME,secret"` | `env-secret:"true"` |
+| `env:"NAME,noexpand"` | `env-noexpand:"true"` |
 
 ```go
 type Config struct {
@@ -332,6 +336,15 @@ LITERAL='$NOT_EXPANDED'         # single quotes never expand
 - **Quotes** — double quotes honour escapes and can span multiple lines; single quotes are literal.
 - **Expansion** — `${VAR}` and `$VAR` are expanded (when `WithExpand()` is set) against values already parsed in the file, falling back to the process environment. Write `$$` for a literal `$`.
 
+> **Passwords and expansion.** Expansion applies to the *value text*, so a
+> password containing `$` is rewritten: `pa$$word` becomes `pa$word`, `pa$word`
+> becomes `pa`, and `$ecret123` becomes the empty string. Keep secrets out of
+> expansion in one of these ways:
+>
+> - declare the field as `oneenv.Secret[T]`, or tag it `,secret` / `,noexpand` — those are never expanded;
+> - single-quote the value in the file: `DB_PASSWORD='pa$$word'`;
+> - use `WithExpandStrict()`, which turns an undefined reference into an `ErrUnknownVariable` parse error instead of a silently blanked value.
+
 Syntax errors come back as a [`*ParseError`](#error-handling) carrying the file
 name and line number.
 
@@ -386,6 +399,31 @@ type Config struct {
 fmt.Println(cfg.APIKey)         // ****
 client.Auth(cfg.APIKey.Value()) // the real key
 ```
+
+## Secrets are never expanded
+
+`WithExpand()` rewrites `${VAR}` and `$VAR` inside values — exactly wrong for a
+password, which routinely contains `$`. Expanded as a normal value, `pa$$word`
+becomes `pa$word`, `pa$word` becomes `pa`, and `$ecret123` becomes the empty
+string, so the connection fails with an authentication error pointing nowhere
+near the real cause.
+
+Expansion therefore skips every field that is a secret: a `Secret[T]` field, a
+field tagged `,secret` / `env-secret:"true"`, and any field tagged `,noexpand` /
+`env-noexpand:"true"`. Those decode the literal text, byte for byte.
+
+```go
+type Config struct {
+    DSN      string                `env:"DSN"`            // expanded
+    Password oneenv.Secret[string] `env:"DB_PASSWORD"`    // literal
+    Token    string                `env:"TOKEN,noexpand"` // literal
+}
+```
+
+Two further guards: single-quoting a value (`DB_PASSWORD='pa$$word'`) never
+expands it, for any field; and `WithExpandStrict()` turns a reference to an
+undefined variable into a `*ParseError` wrapping `ErrUnknownVariable`, naming the
+file and line, instead of quietly expanding to `""`.
 
 ## Environment-aware file cascade
 
@@ -617,6 +655,7 @@ Match the cause with `errors.Is`:
 | `ErrRequired` | A `required` field has no value from any source. |
 | `ErrEmpty` | A `notEmpty` field is present but empty. |
 | `ErrSecretFile` | A `file` field names a path that can't be read. |
+| `ErrUnknownVariable` | Strict expansion (`WithExpandStrict`) hit a reference to a variable defined nowhere. Wrapped in a `*ParseError`. |
 | `ErrUnsupportedType` | A field has a type `oneenv` can't decode. |
 
 ### Error types

@@ -33,6 +33,7 @@ Match the cause with `errors.Is`:
 | `ErrRequired` | A `required` field has no value from any source. |
 | `ErrEmpty` | A `notEmpty` field is present but empty. |
 | `ErrSecretFile` | A `file` field names a path that can't be read. |
+| `ErrUnknownVariable` | Strict expansion (`WithExpandStrict`) hit a reference to a variable defined nowhere. Wrapped in a `*ParseError`. |
 | `ErrUnsupportedType` | A field has a type `oneenv` can't decode. |
 
 ## Error types

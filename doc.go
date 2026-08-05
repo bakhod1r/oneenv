@@ -26,8 +26,9 @@
 // # Options
 //
 // Behavior is tuned with functional options: WithFiles, WithEnvFiles,
-// WithEnvVar, WithPrefix, WithOverride, WithExpand, WithRequired, WithTagKey,
-// WithLookuper, WithTypeParser, WithMutator, WithValidator and WithContext. The
+// WithEnvVar, WithPrefix, WithOverride, WithExpand, WithExpandStrict,
+// WithRequired, WithTagKey, WithLookuper, WithTypeParser, WithMutator,
+// WithValidator and WithContext. The
 // zero configuration is valid, and later options win over earlier ones.
 //
 // # Environment-aware file cascade
@@ -65,7 +66,8 @@
 //	env:"NAME,file"      read the value from the file at the resolved path
 //	env:"NAME,init"      allocate a nil pointer/slice/map even when unset
 //	env:"NAME,unset"     drop the variable from the environment after reading
-//	env:"NAME,secret"    mask the value in Redacted output
+//	env:"NAME,secret"    mask the value in Redacted output; never expanded
+//	env:"NAME,noexpand"  decode the literal value, never the expanded one
 //	env:"-"              skip the field
 //	default:"value"      fallback when unset
 //	separator:";"        element delimiter for slices and maps (default ",")
@@ -76,8 +78,9 @@
 //
 // Every configuration tag also has an env-* spelling (env-default,
 // env-separator, env-description, env-layout, env-prefix, env-required,
-// env-notempty, env-file, env-init, env-unset and env-secret). When both spellings are
-// present the env-* form takes priority and the native tag is the fallback.
+// env-notempty, env-file, env-init, env-unset, env-secret and env-noexpand).
+// When both spellings are present the env-* form takes priority and the native
+// tag is the fallback.
 //
 // # Marshal and Usage
 //

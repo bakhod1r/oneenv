@@ -36,7 +36,8 @@ type Config struct {
 | `env:"NAME,file"` | string-ish | Treat the resolved value as a **path** and read the file's contents as the real value. |
 | `env:"NAME,init"` | pointer / slice / map | Allocate a non-nil zero value even when no value is supplied. |
 | `env:"NAME,unset"` | any field | Remove the variable from the process environment after reading it. |
-| `env:"NAME,secret"` | any field | Mask the value in `Redacted` / `RedactedMap` output (plain `Marshal` keeps it). |
+| `env:"NAME,secret"` | any field | Mask the value in `Redacted` / `RedactedMap` output (plain `Marshal` keeps it). Also excludes the value from `${VAR}` expansion. |
+| `env:"NAME,noexpand"` | any field | Never apply `${VAR}` / `$VAR` expansion to this value; decode the literal text. Implied by `,secret` and by `Secret[T]`. |
 | `default:"..."` | any field | Fallback value when nothing else provides one. |
 | `separator:","` | slice / map | Element separator. `envSeparator` is accepted as an alias. |
 | `layout:"..."` | `time.Time` | `time.Parse` layout (default `time.RFC3339`). |
@@ -62,6 +63,8 @@ convention can be used throughout:
 | `env:"NAME,file"` | `env-file:"true"` |
 | `env:"NAME,init"` | `env-init:"true"` |
 | `env:"NAME,unset"` | `env-unset:"true"` |
+| `env:"NAME,secret"` | `env-secret:"true"` |
+| `env:"NAME,noexpand"` | `env-noexpand:"true"` |
 
 ```go
 type Config struct {

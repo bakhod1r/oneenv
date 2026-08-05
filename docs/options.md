@@ -16,7 +16,8 @@ options are applied in order, and a later option wins over an earlier one.
 | `WithEnvVar(names...)` | Which env variables name the active environment for `WithEnvFiles` (default `APP_ENV`, then `GO_ENV`). |
 | `WithPrefix(p)` | Restrict lookups to keys carrying a prefix, e.g. `APP_` maps `env:"PORT"` to `APP_PORT`. |
 | `WithOverride()` | Let `.env` values overwrite variables already in the process env (default: existing wins). |
-| `WithExpand()` | Enable `${VAR}` / `$VAR` expansion inside values. |
+| `WithExpand()` | Enable `${VAR}` / `$VAR` expansion inside values. Secret and `,noexpand` fields are never expanded. |
+| `WithExpandStrict()` | As `WithExpand()`, but a reference to an undefined variable fails with `ErrUnknownVariable` instead of expanding to `""`. |
 | `WithRequired()` | Treat every field as required, as if each carried `,required`. |
 | `WithTagKey(k)` | Change the struct tag key (default `env`). |
 | `WithLookuper(l)` | Swap the env source — pass a `MapLookuper` for hermetic tests. |

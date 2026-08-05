@@ -12,16 +12,23 @@ import (
 // decode populates the struct pointed to by v using the given config, file
 // values and lookuper. All field errors are collected and returned joined, so
 // a caller sees every problem at once rather than one at a time.
-func decode(v any, cfg config, fileVals map[string]string) error {
+func decode(v any, cfg config, fileVals, rawVals map[string]string) error {
 	rv := reflect.ValueOf(v)
 	if rv.Kind() != reflect.Pointer || rv.IsNil() || rv.Elem().Kind() != reflect.Struct {
 		return ErrNotAStruct
+	}
+
+	// Without expansion the raw and expanded values coincide, and the raw map is
+	// left empty; dropping it keeps the no-expand path on a single map.
+	if !cfg.expand {
+		rawVals = nil
 	}
 
 	// Environment source has priority over file values unless override is set.
 	var src Lookuper = layeredSource{
 		env:      cfg.lookuper,
 		file:     fileVals,
+		raw:      rawVals,
 		override: cfg.override,
 		prefix:   cfg.prefix,
 	}
@@ -70,7 +77,14 @@ func decodeStruct(rv reflect.Value, path, keyPrefix string, src Lookuper, cfg co
 			defer func() { _ = os.Unsetenv(key) }()
 		}
 
-		raw, ok := src.Lookup(fp.key)
+		// Secrets and ",noexpand" fields read the literal text, so a '$' in the
+		// value is never mistaken for a variable reference.
+		raw, ok := "", false
+		if fp.noExpand {
+			raw, ok = lookupRaw(src, fp.key)
+		} else {
+			raw, ok = src.Lookup(fp.key)
+		}
 		if !ok {
 			if fp.hasDefant {
 				raw = fp.defval
@@ -233,21 +247,36 @@ func joinPath(parent, name string) string {
 type layeredSource struct {
 	env      Lookuper
 	file     map[string]string
+	raw      map[string]string // literal, pre-expansion file values
 	override bool
 	prefix   string
 }
 
 func (l layeredSource) Lookup(key string) (string, bool) {
+	return l.lookup(key, l.file)
+}
+
+// LookupRaw resolves key like Lookup, except that a hit in the file values
+// yields the literal text before expansion. Process-environment values are
+// never expanded to begin with, so they are returned unchanged.
+func (l layeredSource) LookupRaw(key string) (string, bool) {
+	if l.raw == nil {
+		return l.Lookup(key)
+	}
+	return l.lookup(key, l.raw)
+}
+
+func (l layeredSource) lookup(key string, file map[string]string) (string, bool) {
 	envKey := l.prefix + key
 	if l.override {
-		if v, ok := l.file[key]; ok {
+		if v, ok := file[key]; ok {
 			return v, true
 		}
 	}
 	if v, ok := l.env.Lookup(envKey); ok {
 		return v, true
 	}
-	if v, ok := l.file[key]; ok {
+	if v, ok := file[key]; ok {
 		return v, true
 	}
 	return "", false

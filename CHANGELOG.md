@@ -5,6 +5,29 @@ All notable changes to **oneenv** are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-08-05
+
+### Fixed
+
+- **Secrets are no longer corrupted by `WithExpand()`.** Expansion treated every
+  `$` in a value as a variable reference, so a password from a password manager
+  was silently rewritten: `pa$$word` decoded as `pa$word`, `pa$word` as `pa`, and
+  `$ecret123` as `""`. `${PATH}` inside a DSN expanded to the real `PATH`. Fields
+  holding secrets now decode the literal text from the file: `Secret[T]` fields,
+  fields tagged `,secret` / `env-secret:"true"`, and fields tagged `,noexpand`.
+  Non-secret fields expand exactly as before.
+
+### Added
+
+- **`,noexpand` tag** (and `env-noexpand:"true"`) — opt a non-secret field out of
+  `${VAR}` / `$VAR` expansion.
+- **`WithExpandStrict()`** — expansion where a reference to a variable defined
+  neither earlier in the file nor in the process environment fails with a
+  `*ParseError` wrapping the new `ErrUnknownVariable`, instead of expanding to
+  the empty string.
+- **`ErrUnknownVariable`** sentinel, and `ParseError.Err` with an `Unwrap`
+  method, so parse failures can be matched with `errors.Is`.
+
 ## [1.1.0] - 2026-07-19
 
 ### Added
@@ -65,4 +88,6 @@ package.
 - **Runnable examples** for the full API surface, so pkg.go.dev renders
   interactive examples.
 
+[1.2.0]: https://github.com/bakhod1r/oneenv/releases/tag/v1.2.0
+[1.1.0]: https://github.com/bakhod1r/oneenv/releases/tag/v1.1.0
 [1.0.0]: https://github.com/bakhod1r/oneenv/releases/tag/v1.0.0
