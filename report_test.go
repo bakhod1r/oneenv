@@ -133,6 +133,22 @@ func TestAliasAndEnumAndPattern(t *testing.T) {
 	}
 }
 
+func TestWithWriteExampleDefaultsNextToTheEnvFile(t *testing.T) {
+	dir := writeEnv(t, ".env", "PORT=9090\n")
+	var cfg appConfig
+	err := oneenv.Load(&cfg,
+		oneenv.WithBaseDir(dir),
+		oneenv.WithLookuper(oneenv.MapLookuper{}),
+		oneenv.WithWriteExample(),
+	)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, ".env.example")); err != nil {
+		t.Fatalf("example not written next to .env: %v", err)
+	}
+}
+
 func TestWithWriteExample(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, ".env.example")

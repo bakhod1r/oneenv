@@ -22,8 +22,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`Hash` / `HashFull`** — a short, stable fingerprint of the effective
   configuration, for printing on deploy.
 - **`WithBaseDir(dir)`** — resolve relative `.env` paths against a directory.
-- **`WithWriteExample(path)`** — regenerate a `.env.example` from the struct on
-  every successful load, rewriting the file only when its contents change.
+- **`WithWriteExample([path])`** — regenerate an example file from the struct on
+  every successful load, rewriting it only when its contents change. With no
+  argument it sits next to the `.env` it documents (`.env` → `.env.example`,
+  honoring `WithBaseDir`).
 - **`WithOutput(w)`** — the single place a writer is named; everything oneenv
   prints goes to `os.Stdout` otherwise.
 - **`WithRedacted()`** — mask every secret in full, overriding

@@ -232,7 +232,7 @@ options are applied in order, and a later option wins over an earlier one.
 | `WithBaseDir(dir)` | Resolve relative `.env` paths against `dir`, e.g. `/etc/myapp/.env`. |
 | `WithStrictKeys()` | Turn a key no field consumes into an error — catches typos like `PORRT`. |
 | `WithReport(&r)` | Capture where every value came from into a `Report`, for `Source` / `Explain`. |
-| `WithWriteExample(path)` | Write a generated `.env.example` to `path` on every successful load. |
+| `WithWriteExample([path])` | Write a generated example file on every successful load. Defaults to sitting next to the `.env` it documents. |
 
 ### Startup output
 
@@ -340,7 +340,8 @@ to see at a glance whether anything moved.
 ### Generating `.env.example`
 
 ```go
-oneenv.Load(&cfg, oneenv.WithWriteExample(".env.example"))
+oneenv.Load(&cfg, oneenv.WithWriteExample())              // .env.example, next to .env
+oneenv.Load(&cfg, oneenv.WithWriteExample("docs/env.ex")) // or anywhere else
 ```
 
 The file is regenerated from the struct on every successful load, using each

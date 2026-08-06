@@ -16,26 +16,27 @@ type Option func(*config)
 // config is the resolved, private configuration for a call. Callers never see
 // it; they compose Options instead.
 type config struct {
-	files        []string
-	autoEnvFiles bool
-	envVarNames  []string
-	prefix       string
-	override     bool
-	expand       bool
-	expandStrict bool
-	requiredAll  bool
-	tagKey       string
-	lookuper     Lookuper
-	typeParsers  map[reflect.Type]setter
-	mutators     []Mutator
-	validator    func(any) error
-	logger       *slog.Logger
-	table        bool
-	out          io.Writer
-	baseDir      string
-	strictKeys   bool
-	examplePath  string
-	report       *Report
+	files          []string
+	autoEnvFiles   bool
+	envVarNames    []string
+	prefix         string
+	override       bool
+	expand         bool
+	expandStrict   bool
+	requiredAll    bool
+	tagKey         string
+	lookuper       Lookuper
+	typeParsers    map[reflect.Type]setter
+	mutators       []Mutator
+	validator      func(any) error
+	logger         *slog.Logger
+	table          bool
+	out            io.Writer
+	baseDir        string
+	strictKeys     bool
+	examplePath    string
+	writeExampleOn bool
+	report         *Report
 	// secretReveal is the number of leading/trailing characters of a secret left
 	// visible in log and table output; secretRevealSet distinguishes an explicit
 	// 0 (mask everything) from "unset, mask in full". redacted forces a full mask
@@ -317,17 +318,27 @@ func WithReport(r *Report) Option {
 	return func(c *config) { c.report = r }
 }
 
-// WithWriteExample writes a ready-to-fill .env.example to path every time the
-// Load succeeds, generated from the struct: each key with its `example` or
-// `default` value, preceded by comments carrying the description, the Go type
-// and whether it is required. Secret values are never written.
+// WithWriteExample writes a ready-to-fill example file every time the Load
+// succeeds, generated from the struct: each key with its `example` or `default`
+// value, preceded by comments carrying the description, the Go type and whether
+// it is required. Secret values are never written.
 //
-//	oneenv.Load(&cfg, oneenv.WithWriteExample(".env.example"))
+// With no argument the file is created next to the .env it documents — ".env"
+// yields ".env.example", and WithBaseDir is honored, so /etc/myapp/.env yields
+// /etc/myapp/.env.example. Pass a path to put it somewhere else.
+//
+//	oneenv.Load(&cfg, oneenv.WithWriteExample())
+//	oneenv.Load(&cfg, oneenv.WithWriteExample("docs/env.example"))
 //
 // The file is rewritten only when its contents would change, so a watcher on
 // the directory is not woken on every start.
-func WithWriteExample(path string) Option {
-	return func(c *config) { c.examplePath = path }
+func WithWriteExample(path ...string) Option {
+	return func(c *config) {
+		c.writeExampleOn = true
+		if len(path) > 0 {
+			c.examplePath = path[0]
+		}
+	}
 }
 
 // WithValidator registers a function called with the fully decoded target once

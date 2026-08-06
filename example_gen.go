@@ -10,12 +10,30 @@ import (
 	"strings"
 )
 
-// writeExample writes the .env.example named by WithWriteExample, generated
+// examplePathFor resolves where the generated example file goes. Without an
+// explicit path it sits next to the first .env file this call reads, so ".env"
+// documents itself as ".env.example" in the same directory.
+func (c config) examplePathFor() string {
+	path := c.examplePath
+	if path == "" {
+		base := ".env"
+		if len(c.files) > 0 && c.files[0] != "" {
+			base = c.files[0]
+		}
+		path = base + ".example"
+	}
+	if !filepath.IsAbs(path) && c.baseDir != "" {
+		path = filepath.Join(c.baseDir, path)
+	}
+	return path
+}
+
+// writeExample writes the example file named by WithWriteExample, generated
 // from the struct that was just decoded. It is a no-op when the option is not
 // set, and it leaves the file alone when its contents would not change, so a
 // directory watcher is not woken on every start.
 func (c config) writeExample(v any, opts []Option) error {
-	if c.examplePath == "" {
+	if !c.writeExampleOn {
 		return nil
 	}
 	t := reflect.TypeOf(v)
@@ -30,10 +48,7 @@ func (c config) writeExample(v any, opts []Option) error {
 	if err := writeExampleTo(&buf, t, c.prefix, c); err != nil {
 		return err
 	}
-	path := c.examplePath
-	if !filepath.IsAbs(path) && c.baseDir != "" {
-		path = filepath.Join(c.baseDir, path)
-	}
+	path := c.examplePathFor()
 	if old, err := os.ReadFile(path); err == nil && bytes.Equal(old, buf.Bytes()) {
 		return nil
 	}
