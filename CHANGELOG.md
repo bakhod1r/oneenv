@@ -5,6 +5,25 @@ All notable changes to **oneenv** are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.0] - 2026-08-06
+
+### Added
+
+- **`Shared[T]` / `MustShared[T]`** — load the configuration once per process
+  and hand the same value to every caller afterwards, so a config needed in six
+  packages is not parsed six times. Concurrent first calls block until the one
+  that won has finished; later calls return its result, error included, without
+  touching the files.
+- **`SharedLive[T]`** — the same, for a `Live[T]` that also follows the files.
+- **`ResetShared[T]`** — drop what was remembered, for tests.
+
+### Fixed
+
+- **Repeated `Load`s of the same target with `WithWatch` no longer accumulate
+  watchers.** Each target starts exactly one, whatever the number of calls, and
+  the entry is forgotten once its context is cancelled so a later `Load` can
+  start again.
+
 ## [1.8.0] - 2026-08-06
 
 ### Fixed
@@ -288,6 +307,7 @@ package.
 - **Runnable examples** for the full API surface, so pkg.go.dev renders
   interactive examples.
 
+[1.9.0]: https://github.com/bakhod1r/oneenv/releases/tag/v1.9.0
 [1.8.0]: https://github.com/bakhod1r/oneenv/releases/tag/v1.8.0
 [1.7.0]: https://github.com/bakhod1r/oneenv/releases/tag/v1.7.0
 [1.6.0]: https://github.com/bakhod1r/oneenv/releases/tag/v1.6.0

@@ -171,6 +171,25 @@ err := oneenv.Load(&cfg, oneenv.WithFiles(".env", ".env.local"))
 `v` must be a non-nil pointer to a struct. Both `Parse` and `Load` are safe for
 concurrent use.
 
+### `Shared` — load once per process
+
+When the configuration is needed in several packages, `Shared[T]` reads it once
+and hands the same value to everyone afterwards. The first call does the work,
+concurrent callers wait for it, and later calls return its result — including
+its error — without touching the files again:
+
+```go
+cfg, err := oneenv.Shared[Config]()   // first call loads
+cfg2, _ := oneenv.Shared[Config]()    // same pointer, no re-read
+
+cfg := oneenv.MustShared[Config]()    // panics instead, for startup paths
+```
+
+Options passed by later calls are ignored: the first call decided. Treat the
+returned value as read-only — nothing writes to it afterwards. To also follow
+the files, use [`SharedLive`](#hot-reload), which keeps its updates behind a
+lock.
+
 ### `Unmarshal` — decode raw bytes
 
 Decodes `.env`-formatted bytes directly, without touching any file or the process
@@ -711,6 +730,13 @@ Each reload decodes into a fresh value and replaces the current one only once
 that has fully succeeded, so **a failed reload leaves the previous values
 intact** — never a half-updated config. Reloads stop when the context is
 cancelled.
+
+`SharedLive[T]` is the same holder as a process-wide singleton, for
+configuration read from several packages:
+
+```go
+live, err := oneenv.SharedLive[Config](ctx, oneenv.WithEnvFiles())
+```
 
 ### Watching a value you own
 

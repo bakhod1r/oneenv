@@ -129,12 +129,29 @@ func (c config) startWatch(v any, opts []Option) {
 	if !c.watch {
 		return
 	}
+	// One watcher per target, however many times Load runs with WithWatch: a
+	// program that reloads its configuration on SIGHUP, or simply calls Load
+	// twice, would otherwise accumulate a goroutine and a set of file
+	// descriptors each time.
+	started, _ := watchers.LoadOrStore(v, &sync.Once{})
+	started.(*sync.Once).Do(func() { c.watchLoop(v, opts) })
+}
+
+// watchers remembers which targets already have a watcher, keyed by the pointer
+// the caller passed to Load.
+var watchers sync.Map // any (the target pointer) -> *sync.Once
+
+// watchLoop runs the notifier for one target until its context is cancelled.
+func (c config) watchLoop(v any, opts []Option) {
 	files, _ := c.resolveFiles()
 	ctx := c.context()
 	// Each reload runs the same options with watching switched off, so a reload
 	// never starts a second watcher.
 	reloadOpts := append(append([]Option{}, opts...), func(rc *config) { rc.watch = false })
 	go func() {
+		// Forget the target once watching ends, so the entry does not outlive
+		// the goroutine and a later Load on the same target can start again.
+		defer watchers.Delete(v)
 		// A notifier that cannot start (an unreadable directory, an exhausted
 		// watch descriptor table) is reported through the same callback as a
 		// failed reload, rather than taking the process down.
