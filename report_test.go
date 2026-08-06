@@ -302,3 +302,47 @@ func TestReportMissingKeys(t *testing.T) {
 		t.Fatalf("table did not summarize the unset keys:\n%s", buf.String())
 	}
 }
+
+func TestTableIsRuledAndPlainWhenCaptured(t *testing.T) {
+	var buf bytes.Buffer
+	type conf struct {
+		Host string `env:"HOST" default:"localhost"`
+		Port int    `env:"PORT" default:"8080"`
+	}
+	var cfg conf
+	err := oneenv.Load(&cfg,
+		oneenv.WithFiles(),
+		oneenv.WithLookuper(oneenv.MapLookuper{}),
+		oneenv.WithTable(),
+		oneenv.WithOutput(&buf),
+	)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	out := buf.String()
+
+	// A rule between every row: header rule plus one between the two rows.
+	if n := strings.Count(out, "├"); n != 2 {
+		t.Fatalf("expected a rule between every row, got %d:\n%s", n, out)
+	}
+	if !strings.Contains(out, "┌") || !strings.Contains(out, "┘") {
+		t.Fatalf("table is not bordered:\n%s", out)
+	}
+	// Bold is for terminals; a captured table stays plain so it can be compared.
+	if strings.Contains(out, "\x1b[") {
+		t.Fatalf("escape sequences leaked into captured output:\n%q", out)
+	}
+	// Every line of a bordered table is the same width.
+	var width int
+	for _, line := range strings.Split(strings.TrimRight(out, "\n"), "\n") {
+		if line == "" {
+			continue
+		}
+		n := len([]rune(line))
+		if width == 0 {
+			width = n
+		} else if n != width {
+			t.Fatalf("ragged table line %q (%d, want %d):\n%s", line, n, width, out)
+		}
+	}
+}

@@ -5,6 +5,14 @@ All notable changes to **oneenv** are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.1] - 2026-08-06
+
+### Changed
+
+- **The table is ruled between every row**, and the header and key column are
+  bold where the output is a terminal. Redirected or captured output stays
+  plain, so a table in a log file is still comparable.
+
 ## [1.9.0] - 2026-08-06
 
 ### Added
@@ -307,6 +315,7 @@ package.
 - **Runnable examples** for the full API surface, so pkg.go.dev renders
   interactive examples.
 
+[1.9.1]: https://github.com/bakhod1r/oneenv/releases/tag/v1.9.1
 [1.9.0]: https://github.com/bakhod1r/oneenv/releases/tag/v1.9.0
 [1.8.0]: https://github.com/bakhod1r/oneenv/releases/tag/v1.8.0
 [1.7.0]: https://github.com/bakhod1r/oneenv/releases/tag/v1.7.0

@@ -265,13 +265,21 @@ err := oneenv.Load(&cfg, oneenv.WithTable())
 ```
 
 ```
-KEY          VALUE       TYPE           NULL  SOURCE
-API_KEY      ****        string               .env.local
-DB_PASSWORD  ****        string               env
-DEBUG        ""          bool           yes   unset
-HOST         localhost   string               default
-TIMEOUT      30s         time.Duration        .env
+┌─────────────┬───────────┬───────────────┬──────┬────────────┐
+│ KEY         │ VALUE     │ TYPE          │ NULL │ SOURCE     │
+├─────────────┼───────────┼───────────────┼──────┼────────────┤
+│ API_KEY     │ ****      │ string        │      │ .env.local │
+├─────────────┼───────────┼───────────────┼──────┼────────────┤
+│ DB_PASSWORD │ ****      │ string        │      │ env        │
+├─────────────┼───────────┼───────────────┼──────┼────────────┤
+│ DEBUG       │ ""        │ bool          │ yes  │ unset      │
+├─────────────┼───────────┼───────────────┼──────┼────────────┤
+│ TIMEOUT     │ 30s       │ time.Duration │      │ .env       │
+└─────────────┴───────────┴───────────────┴──────┴────────────┘
 ```
+
+The header and the key column are bold when the output is a terminal, and plain
+when it is redirected or captured, so a table in a log file stays comparable.
 
 `SOURCE` names where the value came from: **the file that supplied it**, or
 `env`, `default`, `unset`. `NULL` marks a key that resolved to nothing —

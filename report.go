@@ -3,6 +3,7 @@ package oneenv
 import (
 	"fmt"
 	"io"
+	"os"
 	"sort"
 	"strings"
 	"text/tabwriter"
@@ -173,17 +174,19 @@ func writeTable(w io.Writer, entries []Entry) error {
 	return writeRuledTable(w, []string{"KEY", "VALUE", "TYPE", "NULL", "SOURCE"}, rows)
 }
 
-// writeRuledTable draws a table with a border and a rule under the header,
-// padding every cell to its column's width.
+// writeRuledTable draws a table with a border, a rule between every row, and
+// the header and first column in bold where the output is a terminal.
 func writeRuledTable(w io.Writer, header []string, rows [][]string) error {
+	bold := boldFunc(w)
+
 	width := make([]int, len(header))
 	for i, h := range header {
 		width[i] = runeLen(h)
 	}
 	for _, r := range rows {
 		for i, cell := range r {
-			if n := runeLen(cell); n > width[i] {
-				width[i] = n
+			if i < len(width) && runeLen(cell) > width[i] {
+				width[i] = runeLen(cell)
 			}
 		}
 	}
@@ -199,28 +202,62 @@ func writeRuledTable(w io.Writer, header []string, rows [][]string) error {
 		}
 		b.WriteString(right + "\n")
 	}
-	line := func(cells []string) {
+	// Padding is computed from the plain text and the styling wrapped around it
+	// afterwards, so an escape sequence never counts towards a column's width.
+	line := func(cells []string, emphasize func(col int) bool) {
 		b.WriteString("│")
 		for i, n := range width {
 			cell := ""
 			if i < len(cells) {
 				cell = cells[i]
 			}
-			b.WriteString(" " + cell + strings.Repeat(" ", n-runeLen(cell)) + " │")
+			text := cell
+			if emphasize(i) {
+				text = bold(cell)
+			}
+			b.WriteString(" " + text + strings.Repeat(" ", n-runeLen(cell)) + " │")
 		}
 		b.WriteByte('\n')
 	}
 
+	everyColumn := func(int) bool { return true }
+	// The key is what the eye scans for, so the first column carries the
+	// emphasis in the body.
+	firstColumn := func(col int) bool { return col == 0 }
+
 	rule("┌", "┬", "┐")
-	line(header)
+	line(header, everyColumn)
 	rule("├", "┼", "┤")
-	for _, r := range rows {
-		line(r)
+	for i, r := range rows {
+		if i > 0 {
+			rule("├", "┼", "┤")
+		}
+		line(r, firstColumn)
 	}
 	rule("└", "┴", "┘")
 
 	_, err := io.WriteString(w, b.String())
 	return err
+}
+
+// boldFunc returns a styling function: real ANSI bold when the output is a
+// terminal, and the text untouched otherwise, so a redirected table stays plain
+// and a captured one stays comparable.
+func boldFunc(w io.Writer) func(string) string {
+	f, ok := w.(*os.File)
+	if !ok {
+		return func(s string) string { return s }
+	}
+	info, err := f.Stat()
+	if err != nil || info.Mode()&os.ModeCharDevice == 0 {
+		return func(s string) string { return s }
+	}
+	return func(s string) string {
+		if s == "" {
+			return s
+		}
+		return "\x1b[1m" + s + "\x1b[0m"
+	}
 }
 
 // runeLen counts characters, not bytes, so a multi-byte value does not throw
