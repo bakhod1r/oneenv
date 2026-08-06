@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"unicode"
 
 	"github.com/bakhod1r/oneenv"
 )
@@ -345,4 +346,62 @@ func TestTableIsRuledAndPlainWhenCaptured(t *testing.T) {
 			t.Fatalf("ragged table line %q (%d, want %d):\n%s", line, n, width, out)
 		}
 	}
+}
+
+func TestTableStaysEvenWithWideCharacters(t *testing.T) {
+	var buf bytes.Buffer
+	type conf struct {
+		Name   string `env:"NAME"`
+		Emoji  string `env:"EMOJI"`
+		Accent string `env:"ACCENT"`
+	}
+	var cfg conf
+	err := oneenv.Load(&cfg,
+		oneenv.WithFiles(),
+		oneenv.WithLookuper(oneenv.MapLookuper{
+			"NAME":   "東京都",    // three double-width ideographs
+			"EMOJI":  "🚀 ship", // an emoji is two columns wide
+			"ACCENT": "café",   // may arrive with a combining accent
+		}),
+		oneenv.WithTable(),
+		oneenv.WithOutput(&buf),
+	)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+
+	var width int
+	for _, line := range strings.Split(strings.TrimRight(buf.String(), "\n"), "\n") {
+		if !strings.HasPrefix(line, "│") && !strings.HasPrefix(line, "┌") &&
+			!strings.HasPrefix(line, "├") && !strings.HasPrefix(line, "└") {
+			continue
+		}
+		n := terminalWidth(line)
+		if width == 0 {
+			width = n
+		} else if n != width {
+			t.Fatalf("ragged line %q (%d columns, want %d):\n%s", line, n, width, buf.String())
+		}
+	}
+}
+
+// terminalWidth mirrors what a terminal does with the characters used above, so
+// the test measures the same thing the table does.
+func terminalWidth(s string) int {
+	n := 0
+	for _, r := range s {
+		switch {
+		case unicode.Is(unicode.Mn, r) || r == 0xFE0F:
+		case r >= 0x1100 && r <= 0x115F, r >= 0x2E80 && r <= 0xA4CF,
+			r >= 0xAC00 && r <= 0xD7A3, r >= 0xF900 && r <= 0xFAFF,
+			r >= 0xFE10 && r <= 0xFE19, r >= 0xFE30 && r <= 0xFE6F,
+			r >= 0xFF00 && r <= 0xFF60, r >= 0xFFE0 && r <= 0xFFE6,
+			r >= 0x1F300 && r <= 0x1F64F, r >= 0x1F900 && r <= 0x1F9FF,
+			r >= 0x20000 && r <= 0x3FFFD:
+			n += 2
+		default:
+			n++
+		}
+	}
+	return n
 }

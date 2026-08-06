@@ -5,6 +5,15 @@ All notable changes to **oneenv** are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.2] - 2026-08-06
+
+### Fixed
+
+- **The table stays even with non-ASCII values.** Column widths were counted in
+  runes, so a CJK ideograph or an emoji — two columns wide in a terminal — and a
+  combining accent — none at all — left the right border ragged. Widths are now
+  measured the way a terminal draws them.
+
 ## [1.9.1] - 2026-08-06
 
 ### Changed
@@ -315,6 +324,7 @@ package.
 - **Runnable examples** for the full API surface, so pkg.go.dev renders
   interactive examples.
 
+[1.9.2]: https://github.com/bakhod1r/oneenv/releases/tag/v1.9.2
 [1.9.1]: https://github.com/bakhod1r/oneenv/releases/tag/v1.9.1
 [1.9.0]: https://github.com/bakhod1r/oneenv/releases/tag/v1.9.0
 [1.8.0]: https://github.com/bakhod1r/oneenv/releases/tag/v1.8.0

@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 	"text/tabwriter"
+	"unicode"
 )
 
 // Entry is the full resolution detail of one configuration key: what it
@@ -260,9 +261,54 @@ func boldFunc(w io.Writer) func(string) string {
 	}
 }
 
-// runeLen counts characters, not bytes, so a multi-byte value does not throw
-// the column widths off.
-func runeLen(s string) int { return len([]rune(s)) }
+// runeLen is the width a string occupies in a terminal, which is what the
+// column arithmetic needs: bytes are wrong for anything non-ASCII, and even
+// counting runes is wrong for the two cases below. Getting this wrong shows up
+// immediately as a ragged right border.
+//
+//   - A combining mark (an accent, a variation selector) draws on top of the
+//     previous character and takes no column of its own.
+//   - A CJK ideograph, a fullwidth form or an emoji takes two.
+func runeLen(s string) int {
+	n := 0
+	for _, r := range s {
+		switch {
+		case unicode.Is(unicode.Mn, r) || unicode.Is(unicode.Me, r) || r == 0xFE0F:
+			// zero columns
+		case isWide(r):
+			n += 2
+		default:
+			n++
+		}
+	}
+	return n
+}
+
+// wideRanges are the code points a terminal draws two columns wide: the East
+// Asian Wide and Fullwidth blocks, plus the emoji ranges that behave the same.
+var wideRanges = &unicode.RangeTable{
+	R16: []unicode.Range16{
+		{Lo: 0x1100, Hi: 0x115F, Stride: 1}, // Hangul Jamo
+		{Lo: 0x2E80, Hi: 0x303E, Stride: 1}, // CJK radicals, Kangxi
+		{Lo: 0x3041, Hi: 0x33FF, Stride: 1}, // kana, CJK compatibility
+		{Lo: 0x3400, Hi: 0x4DBF, Stride: 1}, // CJK extension A
+		{Lo: 0x4E00, Hi: 0x9FFF, Stride: 1}, // CJK unified ideographs
+		{Lo: 0xA000, Hi: 0xA4CF, Stride: 1}, // Yi
+		{Lo: 0xAC00, Hi: 0xD7A3, Stride: 1}, // Hangul syllables
+		{Lo: 0xF900, Hi: 0xFAFF, Stride: 1}, // CJK compatibility ideographs
+		{Lo: 0xFE10, Hi: 0xFE19, Stride: 1}, // vertical forms
+		{Lo: 0xFE30, Hi: 0xFE6F, Stride: 1}, // CJK compatibility forms
+		{Lo: 0xFF00, Hi: 0xFF60, Stride: 1}, // fullwidth forms
+		{Lo: 0xFFE0, Hi: 0xFFE6, Stride: 1}, // fullwidth signs
+	},
+	R32: []unicode.Range32{
+		{Lo: 0x1F300, Hi: 0x1F64F, Stride: 1}, // symbols, pictographs, emoticons
+		{Lo: 0x1F900, Hi: 0x1F9FF, Stride: 1}, // supplemental symbols
+		{Lo: 0x20000, Hi: 0x3FFFD, Stride: 1}, // CJK extensions B and beyond
+	},
+}
+
+func isWide(r rune) bool { return unicode.Is(wideRanges, r) }
 
 // finish transfers the recorded entries into the caller's Report and prints the
 // table, when either was asked for. It runs only after a successful decode.
