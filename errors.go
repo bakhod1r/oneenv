@@ -84,6 +84,43 @@ func (e *ConstraintError) Error() string {
 // Unwrap returns the sentinel, so errors.Is matches ErrPattern or ErrNotAllowed.
 func (e *ConstraintError) Unwrap() error { return e.Err }
 
+// AsParseError reports whether err carries a *ParseError, returning it. It is
+// the generic form of errors.As, so the error can be used in the same
+// expression that finds it:
+//
+//	if pe, ok := oneenv.AsParseError(err); ok {
+//	    return fmt.Errorf("config %s:%d: %s", pe.File, pe.Line, pe.Msg)
+//	}
+func AsParseError(err error) (*ParseError, bool) { return asError[*ParseError](err) }
+
+// AsFieldError reports whether err carries a *FieldError, returning it. A Load
+// joins every field failure, so this finds the first one; range over
+// errors.Join's Unwrap() []error to see them all.
+//
+//	if fe, ok := oneenv.AsFieldError(err); ok {
+//	    return fmt.Errorf("config field %s (env %s): %v", fe.Field, fe.Key, fe.Err)
+//	}
+func AsFieldError(err error) (*FieldError, bool) { return asError[*FieldError](err) }
+
+// AsUnknownKeyError reports whether err carries an *UnknownKeyError — a key in
+// a .env file that no struct field consumes, reported under WithStrictKeys.
+func AsUnknownKeyError(err error) (*UnknownKeyError, bool) {
+	return asError[*UnknownKeyError](err)
+}
+
+// AsConstraintError reports whether err carries a *ConstraintError, the failure
+// of a `pattern` or `enum` tag.
+func AsConstraintError(err error) (*ConstraintError, bool) {
+	return asError[*ConstraintError](err)
+}
+
+// asError is errors.As with the target inferred from the type parameter.
+func asError[T error](err error) (T, bool) {
+	var target T
+	ok := errors.As(err, &target)
+	return target, ok
+}
+
 // ParseError describes a syntax error in a .env source, with position.
 type ParseError struct {
 	File string // file name, empty for in-memory sources

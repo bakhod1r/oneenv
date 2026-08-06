@@ -418,3 +418,31 @@ func ExampleRead() {
 	fmt.Printf("%s:%s\n", m["HOST"], m["PORT"])
 	// Output: localhost:5432
 }
+
+// ExampleAsParseError finds the positioned syntax error inside a Load failure
+// without declaring a variable for it first.
+func ExampleAsParseError() {
+	var cfg struct {
+		Host string `env:"HOST"`
+	}
+	err := oneenv.Unmarshal([]byte("HOST localhost\n"), &cfg)
+
+	if pe, ok := oneenv.AsParseError(err); ok {
+		fmt.Printf("config %s:%d: %s\n", pe.File, pe.Line, pe.Msg)
+	}
+	// Output: config :1: missing '=' in assignment
+}
+
+// ExampleAsFieldError reports which field of the struct could not be decoded,
+// and why.
+func ExampleAsFieldError() {
+	var cfg struct {
+		Port int `env:"PORT,required"`
+	}
+	err := oneenv.Load(&cfg, oneenv.WithFiles(), oneenv.WithLookuper(oneenv.MapLookuper{}))
+
+	if fe, ok := oneenv.AsFieldError(err); ok {
+		fmt.Printf("config field %s (env %s): %v\n", fe.Field, fe.Key, fe.Err)
+	}
+	// Output: config field Port (env PORT): oneenv: required variable is not set
+}

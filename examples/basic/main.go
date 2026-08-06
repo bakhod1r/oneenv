@@ -20,6 +20,14 @@ type Config struct {
 func main() {
 	var cfg Config
 	if err := oneenv.Load(&cfg, oneenv.WithFiles(".env", ".env.local")); err != nil {
+		// AsParseError / AsFieldError return the typed error and a bool, so it
+		// can be used in the same expression that finds it.
+		if pe, ok := oneenv.AsParseError(err); ok {
+			log.Fatalf("config %s:%d: %s", pe.File, pe.Line, pe.Msg)
+		}
+		if fe, ok := oneenv.AsFieldError(err); ok {
+			log.Fatalf("config field %s (env %s): %v", fe.Field, fe.Key, fe.Err)
+		}
 		log.Fatal(err)
 	}
 	fmt.Printf("%+v\n", cfg)
