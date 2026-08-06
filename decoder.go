@@ -59,6 +59,7 @@ func decodeFiles(v any, cfg config, fileVals, rawVals, origin map[string]string)
 		errs = append(errs, unknownKeyErrors(fileVals, origin, cfg)...)
 	}
 	if err := errors.Join(errs...); err != nil {
+		cfg.finish()
 		return err
 	}
 	if cfg.validator != nil {
@@ -178,6 +179,8 @@ func decodeStruct(rv reflect.Value, path, keyPrefix string, src Lookuper, cfg co
 				continue
 			} else if fp.required || cfg.requiredAll {
 				*errs = append(*errs, &FieldError{Field: fieldPath, Key: fp.key, Err: ErrRequired})
+				entry.Null = true
+				cfg.logField(entry)
 				continue
 			} else {
 				cfg.logField(entry)
@@ -222,6 +225,8 @@ func decodeStruct(rv reflect.Value, path, keyPrefix string, src Lookuper, cfg co
 		// global WithRequired() option treat it as a missing value.
 		if (fp.required || cfg.requiredAll) && raw == "" {
 			*errs = append(*errs, &FieldError{Field: fieldPath, Key: fp.key, Err: ErrRequired})
+			entry.Null = true
+			cfg.logField(entry)
 			continue
 		}
 

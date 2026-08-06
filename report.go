@@ -167,13 +167,17 @@ func boolWord(b bool) string {
 func writeTable(w io.Writer, entries []Entry) error {
 	rows := make([][]string, 0, len(entries))
 	for i, e := range entries {
+		req := ""
+		if e.Required {
+			req = "yes"
+		}
 		null := ""
 		if e.Null {
 			null = "yes"
 		}
-		rows = append(rows, []string{strconv.Itoa(i + 1), e.Key, displayValue(e.Value), e.Type, null, e.Origin()})
+		rows = append(rows, []string{strconv.Itoa(i + 1), e.Key, displayValue(e.Value), e.Type, req, null, e.Origin()})
 	}
-	return writeRuledTableEntries(w, []string{"#", "KEY", "VALUE", "TYPE", "NULL", "SOURCE"}, rows, entries)
+	return writeRuledTableEntries(w, []string{"#", "KEY", "VALUE", "TYPE", "REQUIRED", "NULL", "SOURCE"}, rows, entries)
 }
 
 // writeRuledTable draws a table with a border, a rule between every row, and
@@ -278,10 +282,13 @@ func formatCell(cell string, rowIdx, colIdx int, term bool, entries []Entry) str
 			}
 			return "\x1b[32m" + cell + "\x1b[0m" // Green for set value
 		}
-		if colIdx == 4 && e.Null { // NULL
+		if colIdx == 4 && e.Required { // REQUIRED
+			return "\x1b[33m" + cell + "\x1b[0m" // Yellow required
+		}
+		if colIdx == 5 && e.Null { // NULL
 			return "\x1b[33m" + cell + "\x1b[0m" // Yellow null
 		}
-		if colIdx == 5 { // SOURCE
+		if colIdx == 6 { // SOURCE
 			switch e.Source {
 			case SourceEnv:
 				return "\x1b[36m" + cell + "\x1b[0m" // Cyan
