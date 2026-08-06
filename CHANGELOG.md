@@ -5,6 +5,31 @@ All notable changes to **oneenv** are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.0] - 2026-08-06
+
+### Fixed
+
+- **A failed reload no longer leaves a half-updated configuration.** `WithWatch`
+  decoded straight into the target, so a reload that failed partway kept the
+  fields it had already written and left the rest stale. Each reload now decodes
+  into a fresh value and replaces the target only once it has fully succeeded.
+
+### Added
+
+- **`NewLive[T]`** — a configuration holder that owns its lock: it loads once,
+  follows the files until the context is cancelled, and hands every goroutine a
+  snapshot through `Get`. `Err` reports the last reload failure. This is the
+  form to reach for when the configuration is read concurrently.
+- **`WithMutex(mu sync.Locker)`** — for a value you own, the lock oneenv takes
+  while it swaps a reload in, so readers taking the same lock never race with
+  it.
+- **Ruled tables.** The `WithTable` and `Print` output is drawn with box
+  characters, so a long value no longer runs into the next column at a glance.
+- **`WithWatch()` takes no callback.** Every reload is reported through
+  `WithLogger` — a debug record on success, a warning on failure — so a callback
+  is needed only when the program has to act on a reload. `WithWatch(fn)` is
+  unchanged.
+
 ## [1.7.0] - 2026-08-06
 
 ### Added
@@ -263,6 +288,7 @@ package.
 - **Runnable examples** for the full API surface, so pkg.go.dev renders
   interactive examples.
 
+[1.8.0]: https://github.com/bakhod1r/oneenv/releases/tag/v1.8.0
 [1.7.0]: https://github.com/bakhod1r/oneenv/releases/tag/v1.7.0
 [1.6.0]: https://github.com/bakhod1r/oneenv/releases/tag/v1.6.0
 [1.5.1]: https://github.com/bakhod1r/oneenv/releases/tag/v1.5.1

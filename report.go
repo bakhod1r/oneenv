@@ -157,22 +157,75 @@ func boolWord(b bool) string {
 	return "false"
 }
 
-// writeTable renders entries as an aligned KEY / VALUE / TYPE / NULL / SOURCE
-// table.
+// writeTable renders entries as a ruled KEY / VALUE / TYPE / NULL / SOURCE
+// table. The rules are drawn with box characters, which every terminal oneenv
+// is likely to print to renders, and which keep a long value from running into
+// the next column at a glance.
 func writeTable(w io.Writer, entries []Entry) error {
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-	// tabwriter buffers, so intermediate writes never surface an error; Flush
-	// reports it.
-	_, _ = io.WriteString(tw, "KEY\tVALUE\tTYPE\tNULL\tSOURCE\n")
+	rows := make([][]string, 0, len(entries))
 	for _, e := range entries {
 		null := ""
 		if e.Null {
 			null = "yes"
 		}
-		_, _ = io.WriteString(tw, e.Key+"\t"+displayValue(e.Value)+"\t"+e.Type+"\t"+null+"\t"+e.Origin()+"\n")
+		rows = append(rows, []string{e.Key, displayValue(e.Value), e.Type, null, e.Origin()})
 	}
-	return tw.Flush()
+	return writeRuledTable(w, []string{"KEY", "VALUE", "TYPE", "NULL", "SOURCE"}, rows)
 }
+
+// writeRuledTable draws a table with a border and a rule under the header,
+// padding every cell to its column's width.
+func writeRuledTable(w io.Writer, header []string, rows [][]string) error {
+	width := make([]int, len(header))
+	for i, h := range header {
+		width[i] = runeLen(h)
+	}
+	for _, r := range rows {
+		for i, cell := range r {
+			if n := runeLen(cell); n > width[i] {
+				width[i] = n
+			}
+		}
+	}
+
+	var b strings.Builder
+	rule := func(left, mid, right string) {
+		b.WriteString(left)
+		for i, n := range width {
+			if i > 0 {
+				b.WriteString(mid)
+			}
+			b.WriteString(strings.Repeat("─", n+2))
+		}
+		b.WriteString(right + "\n")
+	}
+	line := func(cells []string) {
+		b.WriteString("│")
+		for i, n := range width {
+			cell := ""
+			if i < len(cells) {
+				cell = cells[i]
+			}
+			b.WriteString(" " + cell + strings.Repeat(" ", n-runeLen(cell)) + " │")
+		}
+		b.WriteByte('\n')
+	}
+
+	rule("┌", "┬", "┐")
+	line(header)
+	rule("├", "┼", "┤")
+	for _, r := range rows {
+		line(r)
+	}
+	rule("└", "┴", "┘")
+
+	_, err := io.WriteString(w, b.String())
+	return err
+}
+
+// runeLen counts characters, not bytes, so a multi-byte value does not throw
+// the column widths off.
+func runeLen(s string) int { return len([]rune(s)) }
 
 // finish transfers the recorded entries into the caller's Report and prints the
 // table, when either was asked for. It runs only after a successful decode.
@@ -248,12 +301,11 @@ func Print(v any, opts ...Option) error {
 	}
 	sort.Strings(keys)
 
-	tw := tabwriter.NewWriter(cfg.writer(), 0, 4, 2, ' ', 0)
-	_, _ = io.WriteString(tw, "KEY\tVALUE\n")
+	rows := make([][]string, 0, len(keys))
 	for _, k := range keys {
-		_, _ = io.WriteString(tw, k+"\t"+displayValue(m[k])+"\n")
+		rows = append(rows, []string{k, displayValue(m[k])})
 	}
-	return tw.Flush()
+	return writeRuledTable(cfg.writer(), []string{"KEY", "VALUE"}, rows)
 }
 
 // displayValue renders an empty value as a visible placeholder, so a blank cell

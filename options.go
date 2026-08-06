@@ -5,6 +5,7 @@ import (
 	"io"
 	"log/slog"
 	"reflect"
+	"sync"
 )
 
 // Option configures a Load, Parse or Read call. Options follow the functional
@@ -38,6 +39,7 @@ type config struct {
 	writeExampleOn bool
 	watch          bool
 	onReload       func(error)
+	mu             sync.Locker // guards the target across a WithWatch reload
 	report         *Report
 	// secretReveal is the number of leading/trailing characters of a secret left
 	// visible in log and table output; secretRevealSet distinguishes an explicit

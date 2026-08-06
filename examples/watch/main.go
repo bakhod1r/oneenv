@@ -1,8 +1,7 @@
 // Example: hot-reload configuration when the .env file changes.
 //
-// oneenv.WithWatch re-decodes into the same struct from its own goroutine, so
-// the value it writes is copied under a mutex inside onReload and the rest of
-// the program reads the copy.
+// oneenv.NewLive holds the configuration and the lock it needs on the inside,
+// so every goroutine can simply call Get and receive a snapshot.
 package main
 
 import (
@@ -10,7 +9,6 @@ import (
 	"fmt"
 	"log"
 	"os/signal"
-	"sync"
 	"syscall"
 	"time"
 
@@ -27,37 +25,12 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	// live is written by the watcher's goroutine; current is what the rest of
-	// the program reads. onReload runs on the goroutine that just wrote live,
-	// so copying there is the safe hand-off point.
-	var (
-		live    Config
-		mu      sync.RWMutex
-		current Config
-	)
-
-	onReload := func(err error) {
-		if err != nil {
-			log.Printf("reload failed, keeping previous config: %v", err)
-			return
-		}
-		mu.Lock()
-		current = live
-		mu.Unlock()
-		log.Printf("reloaded: %+v", live)
-	}
-
-	// Load returns as soon as the first decode is done; a broken configuration
-	// fails fast here rather than in the background.
-	err := oneenv.Load(&live,
-		oneenv.WithEnvFiles(),
-		oneenv.WithContext(ctx),
-		oneenv.WithWatch(onReload),
-	)
+	// Loads once, then follows the files until ctx is cancelled. A broken
+	// configuration fails here rather than in the background.
+	live, err := oneenv.NewLive[Config](ctx, oneenv.WithEnvFiles())
 	if err != nil {
 		log.Fatal(err)
 	}
-	current = live
 
 	// Edit .env while this runs.
 	ticker := time.NewTicker(2 * time.Second)
@@ -67,9 +40,11 @@ func main() {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			mu.RLock()
-			fmt.Printf("serving on %s:%d\n", current.Host, current.Port)
-			mu.RUnlock()
+			cfg := live.Get()
+			fmt.Printf("serving on %s:%d\n", cfg.Host, cfg.Port)
+			if err := live.Err(); err != nil {
+				log.Printf("last reload failed, still on the previous values: %v", err)
+			}
 		}
 	}
 }

@@ -128,7 +128,7 @@ TIMEOUT=30s
 - 🔐 **Secrets** — `env:"PASSWORD,file"` reads a value from a path (Docker/K8s `/run/secrets`); `,secret` + `Redacted` and `Secret[T]` keep sensitive values out of logs.
 - 🌱 **Env-aware cascade** — `WithEnvFiles()` layers `.env`, `.env.local`, `.env.<env>`, `.env.<env>.local` like Rails/Next.js.
 - 🧱 **Slices of structs** — repeated config from indexed keys (`SERVER_0_HOST`, `SERVER_1_HOST`, …).
-- 🔄 **Hot reload** — `WithWatch` re-decodes on file change via native OS events (inotify / kqueue / Windows), still zero-dependency.
+- 🔄 **Hot reload** — `NewLive[T]` keeps a snapshot current on file change via native OS events (inotify / kqueue / Windows), still zero-dependency.
 - 🧰 **Extensible** — custom per-type parsers (`WithTypeParser`), value mutators (`WithMutator`), and a pluggable `WithValidator` — all dependency-free.
 - ↩️ **Round-trips** — `Marshal` renders a struct back to `.env`, and `Usage` prints a `--help` table of the variables a struct consumes.
 - 🧪 **Hermetic tests** — a `Lookuper` interface means no global state and no `t.Setenv`; parallel-safe by design.
@@ -232,7 +232,8 @@ options are applied in order, and a later option wins over an earlier one.
 | `WithBaseDir(dir)` | Resolve relative `.env` paths against `dir`, e.g. `/etc/myapp/.env`. |
 | `WithStrictKeys()` | Turn a key no field consumes into an error — catches typos like `PORRT`. |
 | `WithReport(&r)` | Capture where every value came from into a `Report`, for `Source` / `Explain`. |
-| `WithWatch(onReload)` | Re-decode into the same target whenever a watched `.env` file changes. Ends with the `WithContext` context. |
+| `WithWatch([onReload])` | Re-decode into the same target whenever a watched `.env` file changes. Ends with the `WithContext` context. |
+| `WithMutex(mu)` | The lock guarding the target, taken by oneenv while it swaps in a reload. |
 | `WithWriteExample([path])` | Write a generated example file on every successful load. Defaults to sitting next to the `.env` it documents. |
 
 ### Startup output
@@ -680,40 +681,70 @@ SERVER_1_PORT=2
 
 ## Hot reload
 
-`WithWatch` keeps the configuration up to date: after the initial load, oneenv
-watches the `.env` files this call reads and re-decodes into the same target
-whenever one of them changes. It uses native OS notifications — **inotify** on
-Linux, **kqueue** on BSD/macOS and **ReadDirectoryChangesW** on Windows — with
-modification-time **polling** as a fallback on any other platform. All standard
-library, so the zero-dependency guarantee still holds.
+`NewLive[T]` loads the configuration and then keeps it current, holding the lock
+it needs on the inside — every goroutine simply calls `Get` and receives a
+snapshot:
 
 ```go
-ctx, cancel := context.WithCancel(context.Background())
-defer cancel()
+ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT)
+defer stop()
 
-var cfg Config
+live, err := oneenv.NewLive[Config](ctx, oneenv.WithEnvFiles())
+if err != nil {
+    log.Fatal(err)
+}
+
+cfg := live.Get()                      // a snapshot, safe from any goroutine
+addr := net.JoinHostPort(cfg.Host, strconv.Itoa(cfg.Port))
+
+if err := live.Err(); err != nil {     // the last reload failed
+    log.Printf("still on the previous values: %v", err)
+}
+```
+
+It uses native OS notifications — **inotify** on Linux, **kqueue** on BSD/macOS
+and **ReadDirectoryChangesW** on Windows — with modification-time **polling** as
+a fallback on any other platform (`SetPollInterval`). All standard library, so
+the zero-dependency guarantee still holds.
+
+Each reload decodes into a fresh value and replaces the current one only once
+that has fully succeeded, so **a failed reload leaves the previous values
+intact** — never a half-updated config. Reloads stop when the context is
+cancelled.
+
+### Watching a value you own
+
+`WithWatch` re-decodes into your own struct instead. Hand oneenv the lock that
+guards it with `WithMutex`, and readers take the same lock:
+
+```go
+var (
+    mu  sync.RWMutex
+    cfg Config
+)
 err := oneenv.Load(&cfg,
     oneenv.WithEnvFiles(),
     oneenv.WithContext(ctx),
-    oneenv.WithWatch(func(err error) {
-        if err != nil {
-            log.Printf("config reload failed, keeping previous values: %v", err)
-            return
-        }
-        log.Printf("config reloaded")
-    }),
+    oneenv.WithMutex(&mu),
+    oneenv.WithWatch(),
 )
+
+mu.RLock()
+port := cfg.Port
+mu.RUnlock()
 ```
 
-`Load` returns as soon as the first decode is done; watching continues in the
-background until the `WithContext` context is cancelled. A failed reload leaves
-the last good values in place. Watching never starts if the initial load fails.
+`Load` returns as soon as the first decode is done, and watching never starts if
+it fails. Every reload is reported through `WithLogger` — a debug record on
+success, a warning on failure — so a callback is only needed when the program
+has to act on one:
 
-Reloads write to the target concurrently with your readers, so guard it with a
-mutex, or copy the struct inside the callback and swap a pointer your readers
-hold — see [`examples/watch`](examples/watch).
+```go
+oneenv.WithWatch(func(err error) { ... })
+```
 
-`SetPollInterval(d)` tunes the fallback cadence where no native notifier exists.
+Without `WithMutex` the swap races with your readers; use one, or copy the
+struct inside the callback and let readers use that copy.
 
 ### The `watch` subpackage
 

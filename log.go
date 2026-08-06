@@ -176,6 +176,29 @@ func (c config) logMissing(keys []string) {
 	)
 }
 
+// logReload reports the outcome of one WithWatch reload: a debug record when
+// the new values took effect, a warning when they did not and the previous ones
+// still stand.
+func (c config) logReload(err error) {
+	if c.logger == nil {
+		return
+	}
+	if err != nil {
+		c.logger.Warn("oneenv: reload failed, keeping previous values", slog.Any("error", err))
+		return
+	}
+	c.logger.Debug("oneenv: reloaded")
+}
+
+// logWatchFailed reports that the file watcher itself could not run, so the
+// configuration will simply stop following the files.
+func (c config) logWatchFailed(err error) {
+	if c.logger == nil {
+		return
+	}
+	c.logger.Warn("oneenv: watch stopped", slog.Any("error", err))
+}
+
 // logDeprecated warns that a value was taken from a deprecated key. Unlike the
 // per-field debug records this is a warning: it asks the operator to act.
 func (c config) logDeprecated(key, msg string) {
