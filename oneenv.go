@@ -20,6 +20,7 @@ func Load(v any, opts ...Option) error {
 		files = envFileCascade(cfg.files, resolveEnvName(cfg))
 		missingOK = true // every file in the cascade is optional
 	}
+	cfg.logFiles(files)
 	vals, raw, err := readFilesRaw(files, cfg.expandOptions(), missingOK)
 	if err != nil {
 		return err

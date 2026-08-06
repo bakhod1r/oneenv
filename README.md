@@ -224,6 +224,44 @@ options are applied in order, and a later option wins over an earlier one.
 | `WithMutator(m)` | Transform each raw value before decoding (receives a `context.Context`). |
 | `WithValidator(fn)` | Run a validation callback on the decoded struct — plug in any validator, zero-dep. |
 | `WithContext(ctx)` | Context passed to mutators (also via `LoadContext` / `ParseContext`). |
+| `WithTable(w)` | Print an aligned `KEY / VALUE / SOURCE` table to `w` after a successful load. Secrets are partially masked. |
+| `WithLogger(l)` | Log every file read and field resolved to a `*slog.Logger` at debug level. Secrets are partially masked. |
+| `WithSecretReveal(n)` | Characters of a secret left visible at each end in log/table output (default `4`, `0` masks everything). |
+
+### Startup output
+
+`Load` is silent by default. Opt in with `WithTable` for a human-readable banner:
+
+```go
+err := oneenv.Load(&cfg, oneenv.WithTable(os.Stdout))
+```
+
+```
+KEY          VALUE         SOURCE
+API_KEY      sk-l****9f2a  env
+DB_PASSWORD  sup3****word  env
+DEBUG        ""            unset
+HOST         localhost     default
+PORT         9090          env
+```
+
+`SOURCE` names the layer that won: `env`, `file`, `default` or `unset`. Fields
+marked `,secret` and every `Secret[T]` show only their first and last four
+characters — the plaintext never reaches the writer. Use
+`WithSecretReveal(0)` to mask them completely.
+
+For structured output, pass a logger instead (or as well):
+
+```go
+err := oneenv.Load(&cfg, oneenv.WithLogger(slog.Default()))
+// level=DEBUG msg="oneenv: field resolved" key=API_KEY field=APIKey source=env value=sk-l****9f2a secret=true
+```
+
+To print an already-decoded config at any later point, use `oneenv.Print`:
+
+```go
+oneenv.Print(os.Stdout, cfg) // KEY / VALUE table, secrets masked
+```
 
 ## Struct tags
 

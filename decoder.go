@@ -33,15 +33,23 @@ func decode(v any, cfg config, fileVals, rawVals map[string]string) error {
 		prefix:   cfg.prefix,
 	}
 
+	// Per-field reporting is opt-in; without it the recorder stays nil and the
+	// decoder skips the extra source lookup entirely.
+	if cfg.tracing() {
+		cfg.rec = &recorder{}
+	}
+
 	var errs []error
 	decodeStruct(rv.Elem(), "", cfg.prefix, src, cfg, &errs)
 	if err := errors.Join(errs...); err != nil {
 		return err
 	}
 	if cfg.validator != nil {
-		return cfg.validator(v)
+		if err := cfg.validator(v); err != nil {
+			return err
+		}
 	}
-	return nil
+	return cfg.printTable()
 }
 
 func decodeStruct(rv reflect.Value, path, keyPrefix string, src Lookuper, cfg config, errs *[]error) {
@@ -85,16 +93,24 @@ func decodeStruct(rv reflect.Value, path, keyPrefix string, src Lookuper, cfg co
 		} else {
 			raw, ok = src.Lookup(fp.key)
 		}
+		// The layer that won, reported only when a logger or table asked for it.
+		origin := SourceUnset
+		if ok && cfg.tracing() {
+			_, origin, _ = lookupSource(src, fp.key)
+		}
+
 		if !ok {
 			if fp.hasDefant {
-				raw = fp.defval
+				raw, origin = fp.defval, SourceDefault
 			} else if fp.initField {
 				initValue(field)
+				cfg.logField(keyPrefix+fp.key, fieldPath, SourceUnset, "", fp.secret)
 				continue
 			} else if fp.required || cfg.requiredAll {
 				*errs = append(*errs, &FieldError{Field: fieldPath, Key: fp.key, Err: ErrRequired})
 				continue
 			} else {
+				cfg.logField(keyPrefix+fp.key, fieldPath, SourceUnset, "", fp.secret)
 				continue // leave zero value
 			}
 		}
@@ -132,7 +148,9 @@ func decodeStruct(rv reflect.Value, path, keyPrefix string, src Lookuper, cfg co
 
 		if err := fp.set(field, raw, fp.separator); err != nil {
 			*errs = append(*errs, &FieldError{Field: fieldPath, Key: fp.key, Err: err})
+			continue
 		}
+		cfg.logField(keyPrefix+fp.key, fieldPath, origin, raw, fp.secret)
 	}
 }
 
