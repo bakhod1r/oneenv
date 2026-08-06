@@ -5,6 +5,17 @@ All notable changes to **oneenv** are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.0] - 2026-08-06
+
+### Added
+
+- **A report of what is not set** — the keys a struct declares that no source
+  supplied. `WithTable` prints a summary line under the table
+  (`2 not set: SENTRY_DSN, SMTP_HOST`), `WithLogger` logs one warning per load,
+  and `Report.Missing()` / `Report.MissingKeys()` expose the list. A key that
+  fell back to its `default` counts as supplied. This is the mirror image of
+  `WithStrictKeys`, which reports keys in a file that the struct does not know.
+
 ## [1.6.0] - 2026-08-06
 
 ### Added
@@ -252,6 +263,7 @@ package.
 - **Runnable examples** for the full API surface, so pkg.go.dev renders
   interactive examples.
 
+[1.7.0]: https://github.com/bakhod1r/oneenv/releases/tag/v1.7.0
 [1.6.0]: https://github.com/bakhod1r/oneenv/releases/tag/v1.6.0
 [1.5.1]: https://github.com/bakhod1r/oneenv/releases/tag/v1.5.1
 [1.5.0]: https://github.com/bakhod1r/oneenv/releases/tag/v1.5.0

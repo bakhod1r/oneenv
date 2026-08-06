@@ -163,6 +163,19 @@ func (c config) logFiles(files []string) {
 	c.logger.Debug("oneenv: loading", slog.String("files", strings.Join(files, ", ")))
 }
 
+// logMissing warns, once per load, about the keys the struct declares that
+// nothing supplied. It is a warning rather than a debug record: an operator
+// reading the log is the person who has to set them.
+func (c config) logMissing(keys []string) {
+	if c.logger == nil || len(keys) == 0 {
+		return
+	}
+	c.logger.Warn("oneenv: keys not set",
+		slog.Int("count", len(keys)),
+		slog.String("keys", strings.Join(keys, ", ")),
+	)
+}
+
 // logDeprecated warns that a value was taken from a deprecated key. Unlike the
 // per-field debug records this is a warning: it asks the operator to act.
 func (c config) logDeprecated(key, msg string) {

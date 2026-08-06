@@ -264,3 +264,41 @@ func TestSecretsMaskedByDefault(t *testing.T) {
 		t.Fatalf("WithRedacted did not override the reveal:\n%s", buf.String())
 	}
 }
+
+func TestReportMissingKeys(t *testing.T) {
+	var (
+		buf bytes.Buffer
+		rep oneenv.Report
+	)
+	type conf struct {
+		Name  string `env:"APP_NAME"`
+		Port  int    `env:"APP_PORT" default:"8080"`
+		SMTP  string `env:"SMTP_HOST"`
+		Debug bool   `env:"DEBUG"`
+	}
+	var cfg conf
+	err := oneenv.Load(&cfg,
+		oneenv.WithFiles(),
+		oneenv.WithLookuper(oneenv.MapLookuper{"APP_NAME": "superapp"}),
+		oneenv.WithReport(&rep),
+		oneenv.WithTable(),
+		oneenv.WithOutput(&buf),
+	)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+
+	got := rep.MissingKeys()
+	want := []string{"DEBUG", "SMTP_HOST"} // APP_NAME came from env, APP_PORT from its default
+	if len(got) != len(want) {
+		t.Fatalf("MissingKeys() = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("MissingKeys() = %v, want %v", got, want)
+		}
+	}
+	if !strings.Contains(buf.String(), "2 not set: DEBUG, SMTP_HOST") {
+		t.Fatalf("table did not summarize the unset keys:\n%s", buf.String())
+	}
+}

@@ -314,6 +314,32 @@ Secret   : false
 Type     : int
 ```
 
+### What the deployment still has to set
+
+The reverse question — keys the **struct** declares that nothing supplied — is
+answered by the same load. `WithTable` prints a summary line under the table,
+`WithLogger` logs one warning, and the report exposes the list:
+
+```
+KEY          VALUE     TYPE    NULL  SOURCE
+APP_NAME     superapp  string        env
+APP_PORT     8080      int           default
+SENTRY_DSN   ""        string  yes   unset
+SMTP_HOST    ""        string  yes   unset
+
+2 not set: SENTRY_DSN, SMTP_HOST
+```
+
+```go
+level=WARN msg="oneenv: keys not set" count=2 keys="SENTRY_DSN, SMTP_HOST"
+
+rep.MissingKeys() // []string{"SENTRY_DSN", "SMTP_HOST"}
+rep.Missing()     // the full entries, with type and struct field
+```
+
+A key that fell back to its `default` counts as supplied; only keys with no
+value from any source are listed.
+
 ### Catching typos
 
 `WithStrictKeys()` turns a key that no field consumes into an error, so a

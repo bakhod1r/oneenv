@@ -1,6 +1,7 @@
 package oneenv
 
 import (
+	"fmt"
 	"io"
 	"sort"
 	"strings"
@@ -117,6 +118,30 @@ func (r *Report) Explain(key string) string {
 	return b.String()
 }
 
+// Missing returns the keys the struct declares that no source supplied: not the
+// process environment, not a .env file, not a `default` tag. These are the
+// variables a deployment still has to provide — the mirror image of
+// WithStrictKeys, which reports keys in a file that the struct does not know.
+func (r *Report) Missing() []Entry {
+	var out []Entry
+	for _, e := range r.Entries() {
+		if e.Source == SourceUnset {
+			out = append(out, e)
+		}
+	}
+	return out
+}
+
+// MissingKeys is Missing reduced to the key names, sorted.
+func (r *Report) MissingKeys() []string {
+	entries := r.Missing()
+	out := make([]string, 0, len(entries))
+	for _, e := range entries {
+		out = append(out, e.Key)
+	}
+	return out
+}
+
 // String renders the whole report as the same KEY / VALUE / SOURCE table that
 // WithTable prints.
 func (r *Report) String() string {
@@ -163,13 +188,32 @@ func (c config) finish() error {
 			c.report.index[e.Key] = i
 		}
 	}
-	if !c.table {
-		return nil
-	}
 	sorted := make([]Entry, len(entries))
 	copy(sorted, entries)
 	sort.Slice(sorted, func(i, j int) bool { return sorted[i].Key < sorted[j].Key })
-	return writeTable(c.writer(), sorted)
+
+	// Keys the struct declares that nothing supplied are the ones a deployment
+	// still has to fill in, so they are called out rather than left to be
+	// spotted among the rows.
+	var missing []string
+	for _, e := range sorted {
+		if e.Source == SourceUnset {
+			missing = append(missing, e.Key)
+		}
+	}
+	c.logMissing(missing)
+
+	if !c.table {
+		return nil
+	}
+	if err := writeTable(c.writer(), sorted); err != nil {
+		return err
+	}
+	if len(missing) > 0 {
+		_, err := fmt.Fprintf(c.writer(), "\n%d not set: %s\n", len(missing), strings.Join(missing, ", "))
+		return err
+	}
+	return nil
 }
 
 // Print writes the decoded configuration in v as an aligned KEY / VALUE table.
