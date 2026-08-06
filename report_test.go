@@ -214,6 +214,33 @@ func TestDiffAndHash(t *testing.T) {
 	}
 }
 
+func TestEmptySecretIsNotMasked(t *testing.T) {
+	var buf bytes.Buffer
+	type conf struct {
+		Pass string `env:"REDIS_PASSWORD,secret"`
+	}
+	var cfg conf
+	err := oneenv.Load(&cfg,
+		oneenv.WithFiles(),
+		oneenv.WithLookuper(oneenv.MapLookuper{"REDIS_PASSWORD": ""}),
+		oneenv.WithTable(),
+		oneenv.WithOutput(&buf),
+		oneenv.WithSecretReveal(4),
+	)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	out := buf.String()
+	if strings.Contains(out, "****") {
+		t.Fatalf("an empty secret was masked, claiming a value it does not have:\n%s", out)
+	}
+	for _, want := range []string{"TYPE", "NULL", "string", "yes"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("table missing %q:\n%s", want, out)
+		}
+	}
+}
+
 func TestSecretsMaskedByDefault(t *testing.T) {
 	var buf bytes.Buffer
 	cfg := appConfig{APIKey: oneenv.NewSecret("sk-live-abcdef9f2a")}

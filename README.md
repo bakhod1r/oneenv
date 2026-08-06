@@ -244,17 +244,19 @@ err := oneenv.Load(&cfg, oneenv.WithTable())
 ```
 
 ```
-KEY          VALUE       SOURCE
-API_KEY      ****        .env.local
-DB_PASSWORD  ****        env
-DEBUG        ""          unset
-HOST         localhost   default
-PORT         9090        .env
+KEY          VALUE       TYPE           NULL  SOURCE
+API_KEY      ****        string               .env.local
+DB_PASSWORD  ****        string               env
+DEBUG        ""          bool           yes   unset
+HOST         localhost   string               default
+TIMEOUT      30s         time.Duration        .env
 ```
 
 `SOURCE` names where the value came from: **the file that supplied it**, or
-`env`, `default`, `unset`. Fields marked `,secret` and every `Secret[T]` are
-masked in full.
+`env`, `default`, `unset`. `NULL` marks a key that resolved to nothing —
+whether it was never set or set to an empty value. Fields marked `,secret` and
+every `Secret[T]` are masked in full; an **empty** secret prints as `""`, never
+as `****`, so a blank password is never mistaken for a set one.
 
 To reveal a window on a secret — enough to tell two keys apart in a log, not
 enough to use one — pass `WithSecretReveal(n)`:
@@ -305,6 +307,7 @@ Key      : PORT
 Value    : 8080
 Source   : .env.local
 Default  : 8000
+Null     : false
 Required : true
 Secret   : false
 Type     : int

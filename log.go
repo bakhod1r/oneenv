@@ -83,7 +83,9 @@ func (c config) reveal() int {
 // logValue renders a value for output: a non-secret value passes through
 // untouched, a secret is masked according to the reveal policy.
 func (c config) logValue(secret bool, value string) string {
-	if !secret {
+	// An empty secret has nothing to hide, and printing "****" for it would
+	// claim a value is set when none is.
+	if !secret || value == "" {
 		return value
 	}
 	return maskSecret(value, c.reveal())
@@ -130,6 +132,7 @@ func (c config) writer() io.Writer {
 // logField records one resolved field: into the report/table recorder, and into
 // the slog logger when one is installed.
 func (c config) logField(e Entry) {
+	e.Null = e.Value == ""
 	e.Value = c.logValue(e.Secret, e.Value)
 	if c.rec != nil {
 		c.rec.entries = append(c.rec.entries, e)
@@ -142,6 +145,8 @@ func (c config) logField(e Entry) {
 		slog.String("field", e.Field),
 		slog.String("source", string(e.Source)),
 		slog.String("value", e.Value),
+		slog.String("type", e.Type),
+		slog.Bool("null", e.Null),
 		slog.Bool("secret", e.Secret),
 	}
 	if e.File != "" {

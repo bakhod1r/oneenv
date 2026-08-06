@@ -20,6 +20,7 @@ type Entry struct {
 	Type     string // Go type of the field
 	Required bool
 	Secret   bool
+	Null     bool // the value is empty or was never set, secret or not
 }
 
 // Origin describes where a value came from in one word: the .env file name when
@@ -108,6 +109,7 @@ func (r *Report) Explain(key string) string {
 	if e.Default != "" {
 		row("Default", e.Default)
 	}
+	row("Null", boolWord(e.Null))
 	row("Required", boolWord(e.Required))
 	row("Secret", boolWord(e.Secret))
 	row("Type", e.Type)
@@ -130,14 +132,19 @@ func boolWord(b bool) string {
 	return "false"
 }
 
-// writeTable renders entries as an aligned KEY / VALUE / SOURCE table.
+// writeTable renders entries as an aligned KEY / VALUE / TYPE / NULL / SOURCE
+// table.
 func writeTable(w io.Writer, entries []Entry) error {
 	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
 	// tabwriter buffers, so intermediate writes never surface an error; Flush
 	// reports it.
-	_, _ = io.WriteString(tw, "KEY\tVALUE\tSOURCE\n")
+	_, _ = io.WriteString(tw, "KEY\tVALUE\tTYPE\tNULL\tSOURCE\n")
 	for _, e := range entries {
-		_, _ = io.WriteString(tw, e.Key+"\t"+displayValue(e.Value)+"\t"+e.Origin()+"\n")
+		null := ""
+		if e.Null {
+			null = "yes"
+		}
+		_, _ = io.WriteString(tw, e.Key+"\t"+displayValue(e.Value)+"\t"+e.Type+"\t"+null+"\t"+e.Origin()+"\n")
 	}
 	return tw.Flush()
 }
@@ -180,7 +187,14 @@ func (c config) finish() error {
 // WithPrefix or WithTagKey used for the Load so the keys match.
 func Print(v any, opts ...Option) error {
 	cfg := newConfig(opts)
-	m, err := marshalMasked(v, func(s string) string { return maskSecret(s, cfg.reveal()) }, opts...)
+	mask := func(s string) string {
+		// An empty secret has nothing to hide; masking it would claim otherwise.
+		if s == "" {
+			return ""
+		}
+		return maskSecret(s, cfg.reveal())
+	}
+	m, err := marshalMasked(v, mask, opts...)
 	if err != nil {
 		return err
 	}
