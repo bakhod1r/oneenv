@@ -352,9 +352,25 @@ oneenv.Load(&cfg, oneenv.WithWriteExample())              // .env.example, next 
 oneenv.Load(&cfg, oneenv.WithWriteExample("docs/env.ex")) // or anywhere else
 ```
 
-The file is regenerated from the struct on every successful load, using each
-field's `example` tag (falling back to `default`), and is left untouched when
-its contents would not change. Secret values are never written.
+```dotenv
+APP_ENV=  # type: string, required, allowed: local|staging|prod
+APP_NAME= # type: string, required, example: superapp
+APP_PORT= # type: int, default: 8080, http listen port
+
+
+# DB
+DB_HOST=              # type: string, default: localhost
+DB_PORT=              # type: int, default: 5433
+DB_USER=              # type: string, required
+DB_PASSWORD=          # type: string, required, secret
+DB_MAX_CONN_LIFETIME= # type: time.Duration, default: 1h
+```
+
+Every key is written **without a value** — the file is a form to fill in, and a
+default or `example` tag is described in the comment rather than assigned. Each
+struct gets its own section, so variables that belong together stay together.
+The file is regenerated on every successful load and left untouched when its
+contents would not change. Secret values are never written.
 
 ## CLI subcommands
 

@@ -167,10 +167,13 @@ func TestWithWriteExample(t *testing.T) {
 		t.Fatalf("example not written: %v", err)
 	}
 	out := string(data)
-	if !strings.Contains(out, "HOST=api.example.com") {
+	if !strings.Contains(out, "example: api.example.com") {
 		t.Fatalf("the example tag was not used:\n%s", out)
 	}
-	if !strings.Contains(out, "# allowed: dev, test, prod") {
+	if strings.Contains(out, "HOST=api.example.com") {
+		t.Fatalf("a key was written with a value:\n%s", out)
+	}
+	if !strings.Contains(out, "allowed: dev|test|prod") {
 		t.Fatalf("enum values missing from the example:\n%s", out)
 	}
 	if strings.Contains(out, "sk-live") {

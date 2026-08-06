@@ -2,12 +2,12 @@ package oneenv
 
 import (
 	"bytes"
-	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
+	"text/tabwriter"
 )
 
 // examplePathFor resolves where the generated example file goes. Without an
@@ -72,55 +72,108 @@ func Example[T any](w io.Writer, opts ...Option) error {
 	return writeExampleTo(w, t, cfg.prefix, cfg)
 }
 
+// exampleGroup is the block of keys contributed by one struct: the top-level
+// struct, or a nested one. Keeping a group together in the output means the
+// variables that belong to the same concern sit next to each other.
+type exampleGroup struct {
+	name string // struct field path of the nested struct, empty for the root
+	rows []exampleRow
+}
+
+// exampleRow is one KEY= line and the inline comment describing it.
+type exampleRow struct {
+	key     string
+	comment string
+}
+
+// writeExampleTo renders the example file: one blank-line-separated block per
+// struct, each key written without a value and annotated in place.
+//
+//	# App
+//	APP_ENV=   # type: string, required
+//	APP_NAME=  # type: string, default: superapp
 func writeExampleTo(w io.Writer, t reflect.Type, prefix string, cfg config) error {
-	schema, err := schemaFor(t, cfg)
+	groups, err := exampleGroups(t, prefix, "", cfg)
 	if err != nil {
 		return err
 	}
-	for i := range schema.fields {
-		fp := &schema.fields[i]
-		ft := t.FieldByIndex(fp.index).Type
-		if fp.nested {
-			if err := writeExampleTo(w, ft, prefix+fp.envPrefix, cfg); err != nil {
-				return err
-			}
+	// One tabwriter for the whole file keeps every comment in the same column,
+	// including across groups, so the result reads as a single table.
+	tw := tabwriter.NewWriter(w, 0, 4, 1, ' ', 0)
+	for i, g := range groups {
+		if len(g.rows) == 0 {
 			continue
 		}
-		if fp.desc != "" {
-			if _, err := fmt.Fprintf(w, "# %s\n", fp.desc); err != nil {
-				return err
-			}
+		if i > 0 {
+			// Two blank lines between structs: the gap should read as a section
+			// break, not as the spacing inside one.
+			_, _ = io.WriteString(tw, "\n\n")
 		}
-		req := ""
-		if fp.required || cfg.requiredAll {
-			req = ", required"
+		if g.name != "" {
+			_, _ = io.WriteString(tw, "# "+g.name+"\n")
 		}
-		if _, err := fmt.Fprintf(w, "# type: %s%s\n", ft.String(), req); err != nil {
-			return err
-		}
-		if len(fp.enum) > 0 {
-			if _, err := fmt.Fprintf(w, "# allowed: %s\n", strings.Join(fp.enum, ", ")); err != nil {
-				return err
-			}
-		}
-		if fp.patternSrc != "" {
-			if _, err := fmt.Fprintf(w, "# pattern: %s\n", fp.patternSrc); err != nil {
-				return err
-			}
-		}
-		// The `example` tag wins over `default`: it exists precisely to show a
-		// realistic value here. Neither is written for a secret.
-		val := ""
-		if !fp.secret {
-			if fp.example != "" {
-				val = fp.example
-			} else if fp.hasDefant {
-				val = fp.defval
-			}
-		}
-		if _, err := fmt.Fprintf(w, "%s%s=%s\n\n", prefix, fp.key, val); err != nil {
-			return err
+		for _, r := range g.rows {
+			_, _ = io.WriteString(tw, r.key+"=\t"+r.comment+"\n")
 		}
 	}
-	return nil
+	return tw.Flush()
+}
+
+// exampleGroups walks the struct, collecting one group per struct so nested
+// configuration stays together instead of being interleaved.
+func exampleGroups(t reflect.Type, prefix, path string, cfg config) ([]exampleGroup, error) {
+	schema, err := schemaFor(t, cfg)
+	if err != nil {
+		return nil, err
+	}
+	group := exampleGroup{name: path}
+	var nested []exampleGroup
+
+	for i := range schema.fields {
+		fp := &schema.fields[i]
+		field := t.FieldByIndex(fp.index)
+		if fp.nested {
+			sub, err := exampleGroups(field.Type, prefix+fp.envPrefix, joinPath(path, field.Name), cfg)
+			if err != nil {
+				return nil, err
+			}
+			nested = append(nested, sub...)
+			continue
+		}
+		group.rows = append(group.rows, exampleRow{
+			key:     prefix + fp.key,
+			comment: exampleComment(fp, field.Type, cfg),
+		})
+	}
+	return append([]exampleGroup{group}, nested...), nil
+}
+
+// exampleComment describes one variable in a single inline comment: its type
+// first, then whether it is required, then whatever else is worth knowing.
+func exampleComment(fp *fieldPlan, ft reflect.Type, cfg config) string {
+	parts := []string{"type: " + ft.String()}
+	if fp.required || cfg.requiredAll {
+		parts = append(parts, "required")
+	}
+	if fp.secret {
+		parts = append(parts, "secret")
+	}
+	// A secret never carries its example or default into the file.
+	if !fp.secret {
+		if fp.example != "" {
+			parts = append(parts, "example: "+fp.example)
+		} else if fp.hasDefant && fp.defval != "" {
+			parts = append(parts, "default: "+fp.defval)
+		}
+	}
+	if len(fp.enum) > 0 {
+		parts = append(parts, "allowed: "+strings.Join(fp.enum, "|"))
+	}
+	if fp.patternSrc != "" {
+		parts = append(parts, "pattern: "+fp.patternSrc)
+	}
+	if fp.desc != "" {
+		parts = append(parts, fp.desc)
+	}
+	return "# " + strings.Join(parts, ", ")
 }

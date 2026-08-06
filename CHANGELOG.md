@@ -5,6 +5,24 @@ All notable changes to **oneenv** are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.0] - 2026-08-06
+
+### Changed
+
+- **The generated example file has a new shape.** Every key is written without a
+  value — the file is a form to fill in — and what used to be three comment
+  lines above each key is now one inline comment after it:
+
+  ```dotenv
+  APP_ENV=  # type: string, required, allowed: local|staging|prod
+  APP_PORT= # type: int, default: 8080, http listen port
+  ```
+
+  A `default` or `example` tag is described in the comment instead of being
+  assigned, and each struct gets its own section, separated by two blank lines
+  and headed with the field path, so variables that belong together stay
+  together. Applies to both `Example[T]` and `WithWriteExample`.
+
 ## [1.4.3] - 2026-08-06
 
 ### Added
@@ -191,6 +209,7 @@ package.
 - **Runnable examples** for the full API surface, so pkg.go.dev renders
   interactive examples.
 
+[1.5.0]: https://github.com/bakhod1r/oneenv/releases/tag/v1.5.0
 [1.4.3]: https://github.com/bakhod1r/oneenv/releases/tag/v1.4.3
 [1.4.2]: https://github.com/bakhod1r/oneenv/releases/tag/v1.4.2
 [1.4.1]: https://github.com/bakhod1r/oneenv/releases/tag/v1.4.1
