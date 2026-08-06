@@ -90,17 +90,24 @@ func (c config) logValue(secret bool, value string) string {
 }
 
 // maskSecret keeps the first and last n characters of s visible and replaces
-// the middle with the mask. When n is 0, or s is too short for both ends to
-// show without touching, the whole value is masked — so a short secret is never
-// effectively printed in full. Counting is in runes, so a multi-byte value is
-// never cut mid-character.
+// the middle with the mask.
+//
+// A value too short to give both ends n characters gets a narrower window
+// rather than nothing, so a short secret is still recognizable in a table:
+// at most half of it is ever shown, split evenly between the two ends. An
+// eight-character secret with n=4 therefore shows two characters at each end,
+// not four. A value with no room even for that is masked in full. Counting is
+// in runes, so a multi-byte value is never cut mid-character.
 func maskSecret(s string, n int) string {
 	if n == 0 {
 		return redactedMask
 	}
 	r := []rune(s)
-	// Require at least one hidden rune between the two visible ends.
-	if len(r) < 2*n+1 {
+	// n characters at each end must not add up to more than half the value.
+	if half := len(r) / 4; n > half {
+		n = half
+	}
+	if n <= 0 {
 		return redactedMask
 	}
 	return string(r[:n]) + redactedMask + string(r[len(r)-n:])

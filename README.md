@@ -265,8 +265,13 @@ oneenv.Load(&cfg, oneenv.WithTable(), oneenv.WithSecretReveal(4))
 ```
 
 `WithRedacted()` forces the full mask back on, whatever the option order — use
-it behind a production flag. A value too short to reveal both ends without
-overlapping is always masked completely.
+it behind a production flag.
+
+At most **half** of a secret is ever shown, split evenly between the two ends,
+so a short value narrows the window instead of spelling itself out: with
+`WithSecretReveal(4)`, a 32-character key shows `0123****cdef`, an
+8-character one shows `su****pp`, and anything shorter than eight characters
+stays fully masked.
 
 Output goes to stdout; `WithOutput(w)` redirects it. For structured output, pass
 a logger instead (or as well):

@@ -5,6 +5,20 @@ All notable changes to **oneenv** are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.1] - 2026-08-06
+
+### Changed
+
+- **`WithWriteExample()`** takes no argument: the generated example file lands
+  beside the first `.env` the call reads (`.env` → `.env.example`, honoring
+  `WithBaseDir`). Passing a path still works.
+- **`WithSecretReveal(n)` narrows its window instead of giving up.** A value too
+  short to give both ends `n` characters previously fell back to a full mask;
+  now at most half of it is shown, split evenly between the two ends — an
+  8-character secret with `n=4` shows two characters at each end. Values shorter
+  than eight characters are still masked in full, as is everything under
+  `WithRedacted()`.
+
 ## [1.4.0] - 2026-08-06
 
 ### Added
@@ -158,6 +172,7 @@ package.
 - **Runnable examples** for the full API surface, so pkg.go.dev renders
   interactive examples.
 
+[1.4.1]: https://github.com/bakhod1r/oneenv/releases/tag/v1.4.1
 [1.4.0]: https://github.com/bakhod1r/oneenv/releases/tag/v1.4.0
 [1.3.0]: https://github.com/bakhod1r/oneenv/releases/tag/v1.3.0
 [1.2.0]: https://github.com/bakhod1r/oneenv/releases/tag/v1.2.0

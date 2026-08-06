@@ -53,9 +53,10 @@ func TestWithTableMasksSecrets(t *testing.T) {
 	if !strings.Contains(out, "sk-l****9f2a") {
 		t.Fatalf("partial mask missing:\n%s", out)
 	}
-	// A secret too short to reveal both ends is masked completely.
-	if strings.Contains(out, "shor") {
-		t.Fatalf("short secret partially revealed:\n%s", out)
+	// A short secret gets a narrower window, never more than half of it: "short"
+	// is five characters, so only one at each end.
+	if !strings.Contains(out, "s****t") {
+		t.Fatalf("short secret not shown with a narrowed window:\n%s", out)
 	}
 	for _, want := range []string{"KEY", "VALUE", "SOURCE", "PORT", "8080", "env", "localhost", "default", "unset"} {
 		if !strings.Contains(out, want) {
