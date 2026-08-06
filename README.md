@@ -43,6 +43,8 @@
 - [Error handling](#error-handling)
 - [Non-goals](#non-goals)
 - [Benchmarks](#benchmarks)
+- [Examples](#examples)
+- [Contributing](#contributing)
 - [License](#license)
 
 ---
@@ -733,6 +735,28 @@ cd internal/bench && go test -bench . -benchmem -count=5
 
 The comparison lives in its own module, so the root package stays
 dependency-free.
+
+## Examples
+
+Runnable programs live in [`examples/`](examples):
+
+| Example | Shows |
+| --- | --- |
+| [`examples/basic`](examples/basic) | Loading `.env` + `.env.local` into a struct |
+| [`examples/secrets`](examples/secrets) | `Secret[T]`, `,file`, `,noexpand`, and `Redacted` output |
+| [`examples/watch`](examples/watch) | Hot reload with `oneenv/watch` and a safe hand-off to readers |
+
+```bash
+go run ./examples/basic
+```
+
+## Contributing
+
+Bug reports and pull requests are welcome — see
+[CONTRIBUTING.md](CONTRIBUTING.md) for the ground rules (stdlib only, no global
+state, no breaking changes) and the commands CI runs. Participation is governed
+by the [Code of Conduct](CODE_OF_CONDUCT.md). Security issues go through
+[SECURITY.md](SECURITY.md), not the public issue tracker.
 
 ## License
 
