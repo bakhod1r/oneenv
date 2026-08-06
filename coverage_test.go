@@ -740,3 +740,80 @@ func TestFilePrefixed(t *testing.T) {
 		t.Fatalf("got %q", cfg.S)
 	}
 }
+
+func TestWithRequiredEmptyValueErrors(t *testing.T) {
+	// WithRequired() should error when a key exists but its value is empty.
+	type Config struct {
+		Name string `env:"NAME"`
+		Port string `env:"PORT"`
+	}
+	var cfg Config
+	err := Load(&cfg, WithLookuper(MapLookuper{"NAME": "", "PORT": "8080"}), WithRequired())
+	if !errors.Is(err, ErrRequired) {
+		t.Fatalf("want ErrRequired for empty value with WithRequired(), got %v", err)
+	}
+}
+
+func TestRequiredTagEmptyValueErrors(t *testing.T) {
+	// A field tagged ,required should error when the key exists but is empty.
+	type Config struct {
+		Name string `env:"NAME,required"`
+	}
+	var cfg Config
+	err := Load(&cfg, WithLookuper(MapLookuper{"NAME": ""}))
+	if !errors.Is(err, ErrRequired) {
+		t.Fatalf("want ErrRequired for empty value with ,required tag, got %v", err)
+	}
+}
+
+func TestRequiredWithNonEmptyValuePasses(t *testing.T) {
+	// A non-empty value should pass both WithRequired() and ,required tag.
+	type Config struct {
+		Name string `env:"NAME,required"`
+	}
+	var cfg Config
+	err := Load(&cfg, WithLookuper(MapLookuper{"NAME": "hello"}), WithRequired())
+	if err != nil {
+		t.Fatalf("want nil error for non-empty required value, got %v", err)
+	}
+	if cfg.Name != "hello" {
+		t.Fatalf("got %q, want %q", cfg.Name, "hello")
+	}
+}
+
+func TestWithRequiredAllFieldsMissing(t *testing.T) {
+	// WithRequired() should still error when no key is found at all.
+	type Config struct {
+		Name string `env:"NAME"`
+	}
+	var cfg Config
+	err := Load(&cfg, WithLookuper(MapLookuper{}), WithRequired())
+	if !errors.Is(err, ErrRequired) {
+		t.Fatalf("want ErrRequired for missing key with WithRequired(), got %v", err)
+	}
+}
+
+func TestFormatCellRequiredRed(t *testing.T) {
+	entries := []Entry{
+		{Key: "REQ_KEY", Value: "", Required: true, Null: true, Source: SourceUnset},
+		{Key: "OK_KEY", Value: "val", Required: false, Null: false, Source: SourceFile},
+	}
+
+	// Required empty key formatted in terminal -> Bold Red (\x1b[1;31m)
+	reqKey := formatCell("REQ_KEY", 0, 1, true, entries)
+	if !strings.Contains(reqKey, "\x1b[1;31m") {
+		t.Fatalf("expected bold red for required empty key in terminal, got: %q", reqKey)
+	}
+
+	// Required empty value formatted in terminal -> Bold Red (\x1b[1;31m)
+	reqVal := formatCell(`""`, 0, 2, true, entries)
+	if !strings.Contains(reqVal, "\x1b[1;31m") {
+		t.Fatalf("expected bold red for required empty value in terminal, got: %q", reqVal)
+	}
+
+	// Non-terminal output (e.g. redirected or file buffer) -> plain text
+	plainKey := formatCell("REQ_KEY", 0, 0, false, entries)
+	if plainKey != "REQ_KEY" {
+		t.Fatalf("expected plain text when term=false, got: %q", plainKey)
+	}
+}

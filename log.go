@@ -48,12 +48,18 @@ func lookupSource(src Lookuper, key string) (string, Source, string, bool) {
 func (l layeredSource) LookupSource(key string) (string, Source, string, bool) {
 	envKey := l.prefix + key
 	if l.override {
+		if v, ok := l.file[envKey]; ok {
+			return v, SourceFile, l.origin[envKey], true
+		}
 		if v, ok := l.file[key]; ok {
 			return v, SourceFile, l.origin[key], true
 		}
 	}
 	if v, ok := l.env.Lookup(envKey); ok {
 		return v, SourceEnv, "", true
+	}
+	if v, ok := l.file[envKey]; ok {
+		return v, SourceFile, l.origin[envKey], true
 	}
 	if v, ok := l.file[key]; ok {
 		return v, SourceFile, l.origin[key], true

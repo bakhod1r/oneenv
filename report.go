@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
 	"text/tabwriter"
 	"unicode"
@@ -165,20 +166,24 @@ func boolWord(b bool) string {
 // the next column at a glance.
 func writeTable(w io.Writer, entries []Entry) error {
 	rows := make([][]string, 0, len(entries))
-	for _, e := range entries {
+	for i, e := range entries {
 		null := ""
 		if e.Null {
 			null = "yes"
 		}
-		rows = append(rows, []string{e.Key, displayValue(e.Value), e.Type, null, e.Origin()})
+		rows = append(rows, []string{strconv.Itoa(i + 1), e.Key, displayValue(e.Value), e.Type, null, e.Origin()})
 	}
-	return writeRuledTable(w, []string{"KEY", "VALUE", "TYPE", "NULL", "SOURCE"}, rows)
+	return writeRuledTableEntries(w, []string{"#", "KEY", "VALUE", "TYPE", "NULL", "SOURCE"}, rows, entries)
 }
 
 // writeRuledTable draws a table with a border, a rule between every row, and
-// the header and first column in bold where the output is a terminal.
+// formatting applied when outputting to a terminal.
 func writeRuledTable(w io.Writer, header []string, rows [][]string) error {
-	bold := boldFunc(w)
+	return writeRuledTableEntries(w, header, rows, nil)
+}
+
+func writeRuledTableEntries(w io.Writer, header []string, rows [][]string, entries []Entry) error {
+	term := isTerminal(w)
 
 	width := make([]int, len(header))
 	for i, h := range header {
@@ -203,37 +208,28 @@ func writeRuledTable(w io.Writer, header []string, rows [][]string) error {
 		}
 		b.WriteString(right + "\n")
 	}
-	// Padding is computed from the plain text and the styling wrapped around it
-	// afterwards, so an escape sequence never counts towards a column's width.
-	line := func(cells []string, emphasize func(col int) bool) {
+
+	line := func(rowIdx int, cells []string) {
 		b.WriteString("│")
 		for i, n := range width {
 			cell := ""
 			if i < len(cells) {
 				cell = cells[i]
 			}
-			text := cell
-			if emphasize(i) {
-				text = bold(cell)
-			}
+			text := formatCell(cell, rowIdx, i, term, entries)
 			b.WriteString(" " + text + strings.Repeat(" ", n-runeLen(cell)) + " │")
 		}
 		b.WriteByte('\n')
 	}
 
-	everyColumn := func(int) bool { return true }
-	// The key is what the eye scans for, so the first column carries the
-	// emphasis in the body.
-	firstColumn := func(col int) bool { return col == 0 }
-
 	rule("┌", "┬", "┐")
-	line(header, everyColumn)
+	line(-1, header)
 	rule("├", "┼", "┤")
 	for i, r := range rows {
 		if i > 0 {
 			rule("├", "┼", "┤")
 		}
-		line(r, firstColumn)
+		line(i, r)
 	}
 	rule("└", "┴", "┘")
 
@@ -241,24 +237,67 @@ func writeRuledTable(w io.Writer, header []string, rows [][]string) error {
 	return err
 }
 
-// boldFunc returns a styling function: real ANSI bold when the output is a
-// terminal, and the text untouched otherwise, so a redirected table stays plain
-// and a captured one stays comparable.
-func boldFunc(w io.Writer) func(string) string {
+func isTerminal(w io.Writer) bool {
 	f, ok := w.(*os.File)
 	if !ok {
-		return func(s string) string { return s }
+		return false
 	}
 	info, err := f.Stat()
 	if err != nil || info.Mode()&os.ModeCharDevice == 0 {
-		return func(s string) string { return s }
+		return false
 	}
-	return func(s string) string {
-		if s == "" {
-			return s
+	return true
+}
+
+func formatCell(cell string, rowIdx, colIdx int, term bool, entries []Entry) string {
+	if cell == "" || !term {
+		return cell
+	}
+	// Header row
+	if rowIdx < 0 {
+		return "\x1b[1;36m" + cell + "\x1b[0m" // Bold Cyan header
+	}
+
+	if entries != nil && rowIdx < len(entries) {
+		e := entries[rowIdx]
+		// Required but empty or unset -> BOLD RED!
+		if e.Required && (e.Null || e.Value == "" || e.Source == SourceUnset) {
+			return "\x1b[1;31m" + cell + "\x1b[0m" // Bold Red for entire row
 		}
-		return "\x1b[1m" + s + "\x1b[0m"
+
+		// Normal entry styling
+		if colIdx == 0 { // #
+			return "\x1b[1;30m" + cell + "\x1b[0m" // Bold Gray row index
+		}
+		if colIdx == 1 { // KEY
+			return "\x1b[1m" + cell + "\x1b[0m" // Bold Key
+		}
+		if colIdx == 2 { // VALUE
+			if e.Null {
+				return "\x1b[2m" + cell + "\x1b[0m" // Dim for null
+			}
+			return "\x1b[32m" + cell + "\x1b[0m" // Green for set value
+		}
+		if colIdx == 4 && e.Null { // NULL
+			return "\x1b[33m" + cell + "\x1b[0m" // Yellow null
+		}
+		if colIdx == 5 { // SOURCE
+			switch e.Source {
+			case SourceEnv:
+				return "\x1b[36m" + cell + "\x1b[0m" // Cyan
+			case SourceFile:
+				return "\x1b[32m" + cell + "\x1b[0m" // Green
+			case SourceDefault:
+				return "\x1b[33m" + cell + "\x1b[0m" // Yellow
+			case SourceUnset:
+				return "\x1b[31m" + cell + "\x1b[0m" // Red
+			}
+		}
+	} else if colIdx == 0 || colIdx == 1 {
+		return "\x1b[1m" + cell + "\x1b[0m" // Bold
 	}
+
+	return cell
 }
 
 // runeLen is the width a string occupies in a terminal, which is what the

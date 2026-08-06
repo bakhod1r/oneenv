@@ -122,8 +122,10 @@ func decodeStruct(rv reflect.Value, path, keyPrefix string, src Lookuper, cfg co
 		// Record every key this struct consumes, including aliases, so the
 		// strict-key check knows what is legitimate.
 		if cfg.known != nil {
+			cfg.known[keyPrefix+fp.key] = true
 			cfg.known[fp.key] = true
 			for _, a := range fp.aliases {
+				cfg.known[keyPrefix+a] = true
 				cfg.known[a] = true
 			}
 		}
@@ -211,6 +213,15 @@ func decodeStruct(rv reflect.Value, path, keyPrefix string, src Lookuper, cfg co
 
 		if fp.notEmpty && raw == "" {
 			*errs = append(*errs, &FieldError{Field: fieldPath, Key: fp.key, Err: ErrEmpty})
+			continue
+		}
+
+		// A required field must resolve to a non-empty value. A key that exists
+		// but carries an empty string is indistinguishable from "not set" for
+		// most applications, so both the per-field `,required` tag and the
+		// global WithRequired() option treat it as a missing value.
+		if (fp.required || cfg.requiredAll) && raw == "" {
+			*errs = append(*errs, &FieldError{Field: fieldPath, Key: fp.key, Err: ErrRequired})
 			continue
 		}
 
@@ -364,11 +375,17 @@ func (l layeredSource) LookupRaw(key string) (string, bool) {
 func (l layeredSource) lookup(key string, file map[string]string) (string, bool) {
 	envKey := l.prefix + key
 	if l.override {
+		if v, ok := file[envKey]; ok {
+			return v, true
+		}
 		if v, ok := file[key]; ok {
 			return v, true
 		}
 	}
 	if v, ok := l.env.Lookup(envKey); ok {
+		return v, true
+	}
+	if v, ok := file[envKey]; ok {
 		return v, true
 	}
 	if v, ok := file[key]; ok {

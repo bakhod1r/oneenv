@@ -147,7 +147,8 @@ func WithExpandStrict() Option {
 }
 
 // WithRequired treats every field as required, as if each carried the
-// ",required" tag option.
+// ",required" tag option. A field is considered missing when its key is absent
+// from every source, or when it resolves to an empty string.
 func WithRequired() Option {
 	return func(c *config) { c.requiredAll = true }
 }

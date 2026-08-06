@@ -104,6 +104,32 @@ func TestWithStrictKeysCatchesTypos(t *testing.T) {
 	}
 }
 
+func TestWithStrictKeysWithPrefixAndNested(t *testing.T) {
+	type DBConfig struct {
+		Host string `env:"HOST"`
+		Port int    `env:"PORT"`
+	}
+	type Config struct {
+		Name string   `env:"NAME"`
+		DB   DBConfig `envPrefix:"DB_"`
+	}
+
+	dir := writeEnv(t, ".env", "APP_NAME=my-app\nAPP_DB_HOST=localhost\nAPP_DB_PORT=5432\n")
+	var cfg Config
+	err := oneenv.Load(&cfg,
+		oneenv.WithBaseDir(dir),
+		oneenv.WithPrefix("APP_"),
+		oneenv.WithLookuper(oneenv.MapLookuper{}),
+		oneenv.WithStrictKeys(),
+	)
+	if err != nil {
+		t.Fatalf("expected no strict key error for prefixed/nested keys, got: %v", err)
+	}
+	if cfg.Name != "my-app" || cfg.DB.Host != "localhost" || cfg.DB.Port != 5432 {
+		t.Fatalf("unexpected values decoded: %+v", cfg)
+	}
+}
+
 func TestAliasAndEnumAndPattern(t *testing.T) {
 	var cfg appConfig
 	// The alias supplies the value when the current key is absent.
