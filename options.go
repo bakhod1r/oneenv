@@ -2,6 +2,8 @@ package oneenv
 
 import (
 	"context"
+	"io"
+	"log/slog"
 	"reflect"
 )
 
@@ -27,7 +29,15 @@ type config struct {
 	typeParsers  map[reflect.Type]setter
 	mutators     []Mutator
 	validator    func(any) error
-	ctx          context.Context
+	logger       *slog.Logger
+	table        io.Writer
+	// secretReveal is the number of leading/trailing characters of a secret left
+	// visible in log and table output; secretRevealSet distinguishes an explicit
+	// 0 (mask everything) from "unset, use the default".
+	secretReveal    int
+	secretRevealSet bool
+	rec             *recorder // collects per-field records for the table output
+	ctx             context.Context
 }
 
 // expandOptions returns the parser-facing view of the expansion settings.
@@ -189,6 +199,52 @@ func WithMutator(m Mutator) Option {
 // context.Background.
 func WithContext(ctx context.Context) Option {
 	return func(c *config) { c.ctx = ctx }
+}
+
+// WithLogger installs a *slog.Logger that records, at debug level, every file
+// oneenv reads and every field it resolves: the env key, the struct field path,
+// which layer won (env, file, default, unset) and the value.
+//
+// A field marked ",secret" (or env-secret:"true"), and any Secret[T] field, is
+// masked before it reaches the handler: only the first and last few characters
+// survive (see WithSecretReveal), so the plaintext is never logged. Without this
+// option Load stays completely silent.
+//
+//	oneenv.Load(&cfg, oneenv.WithLogger(slog.Default()))
+func WithLogger(l *slog.Logger) Option {
+	return func(c *config) { c.logger = l }
+}
+
+// WithTable prints an aligned KEY / VALUE / SOURCE table to w once a Load
+// succeeds, one row per resolved field:
+//
+//	KEY       VALUE          SOURCE
+//	API_KEY   sk-l****9f2a   file
+//	HOST      localhost      default
+//	PORT      8080           env
+//
+// Secret fields are partially masked (see WithSecretReveal); nothing is printed
+// when the Load fails. Pass os.Stdout for a startup banner, or any io.Writer to
+// capture it.
+func WithTable(w io.Writer) Option {
+	return func(c *config) { c.table = w }
+}
+
+// WithSecretReveal sets how many leading and trailing characters of a secret
+// value stay visible in the WithLogger and WithTable output; the middle is
+// replaced by "****". The default is 4, so "sk-live-abcdef9f2a" logs as
+// "sk-l****9f2a".
+//
+// A value too short to reveal both ends without overlapping is masked
+// completely, so a short secret never leaks in full. Pass 0 to always mask the
+// whole value.
+func WithSecretReveal(n int) Option {
+	return func(c *config) {
+		if n < 0 {
+			n = 0
+		}
+		c.secretReveal, c.secretRevealSet = n, true
+	}
 }
 
 // WithValidator registers a function called with the fully decoded target once

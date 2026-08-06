@@ -5,6 +5,30 @@ All notable changes to **oneenv** are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-08-06
+
+### Added
+
+- **`WithTable(w)`** — prints an aligned `KEY / VALUE / SOURCE` table to `w`
+  once a `Load` succeeds, one row per resolved field. `SOURCE` names the layer
+  that won: `env`, `file`, `default` or `unset`. Nothing is printed when the
+  load fails.
+- **`WithLogger(l *slog.Logger)`** — logs every file read and every field
+  resolved at debug level, with the env key, struct field path, source and
+  value.
+- **`WithSecretReveal(n)`** — how many leading and trailing characters of a
+  secret stay visible in the `WithTable` and `WithLogger` output (default `4`,
+  `0` masks everything). A value too short to reveal both ends without
+  overlapping is masked completely, so a short secret never leaks in full.
+- **`Print(w, v, opts...)`** — renders an already-decoded config as a
+  `KEY / VALUE` table with secrets masked, for use outside a `Load`.
+- **`Source`** type with the `SourceEnv`, `SourceFile`, `SourceDefault` and
+  `SourceUnset` constants.
+
+`Load` remains silent unless one of these options is passed, and the extra
+lookup the source column needs is skipped entirely when it is not. `Redacted`
+and `RedactedMap` are unchanged: they still mask a secret in full.
+
 ## [1.2.0] - 2026-08-05
 
 ### Fixed
@@ -88,6 +112,7 @@ package.
 - **Runnable examples** for the full API surface, so pkg.go.dev renders
   interactive examples.
 
+[1.3.0]: https://github.com/bakhod1r/oneenv/releases/tag/v1.3.0
 [1.2.0]: https://github.com/bakhod1r/oneenv/releases/tag/v1.2.0
 [1.1.0]: https://github.com/bakhod1r/oneenv/releases/tag/v1.1.0
 [1.0.0]: https://github.com/bakhod1r/oneenv/releases/tag/v1.0.0

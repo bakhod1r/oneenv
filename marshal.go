@@ -52,6 +52,16 @@ func RedactedMap(v any, opts ...Option) (map[string]string, error) {
 }
 
 func marshalTo(v any, redact bool, opts ...Option) (map[string]string, error) {
+	var mask func(string) string
+	if redact {
+		mask = func(string) string { return redactedMask }
+	}
+	return marshalMasked(v, mask, opts...)
+}
+
+// marshalMasked is marshalTo with an explicit masking function applied to every
+// secret field's value. A nil mask leaves secrets in plaintext.
+func marshalMasked(v any, mask func(string) string, opts ...Option) (map[string]string, error) {
 	cfg := newConfig(opts)
 	rv := reflect.ValueOf(v)
 	for rv.Kind() == reflect.Pointer {
@@ -64,7 +74,7 @@ func marshalTo(v any, redact bool, opts ...Option) (map[string]string, error) {
 		return nil, ErrNotAStruct
 	}
 	out := make(map[string]string)
-	if err := marshalStruct(rv, cfg.prefix, cfg, redact, out); err != nil {
+	if err := marshalStruct(rv, cfg.prefix, cfg, mask, out); err != nil {
 		return nil, err
 	}
 	return out, nil
@@ -87,7 +97,7 @@ func renderEnv(m map[string]string) []byte {
 	return []byte(b.String())
 }
 
-func marshalStruct(rv reflect.Value, prefix string, cfg config, redact bool, out map[string]string) error {
+func marshalStruct(rv reflect.Value, prefix string, cfg config, mask func(string) string, out map[string]string) error {
 	schema, err := schemaFor(rv.Type(), cfg)
 	if err != nil {
 		return err
@@ -96,7 +106,7 @@ func marshalStruct(rv reflect.Value, prefix string, cfg config, redact bool, out
 		fp := &schema.fields[i]
 		field := rv.FieldByIndex(fp.index)
 		if fp.nested {
-			if err := marshalStruct(field, prefix+fp.envPrefix, cfg, redact, out); err != nil {
+			if err := marshalStruct(field, prefix+fp.envPrefix, cfg, mask, out); err != nil {
 				return err
 			}
 			continue
@@ -108,17 +118,17 @@ func marshalStruct(rv reflect.Value, prefix string, cfg config, redact bool, out
 			}
 			for j := 0; j < field.Len(); j++ {
 				ep := prefix + base + strconv.Itoa(j) + "_"
-				if err := marshalStruct(field.Index(j), ep, cfg, redact, out); err != nil {
+				if err := marshalStruct(field.Index(j), ep, cfg, mask, out); err != nil {
 					return err
 				}
 			}
 			continue
 		}
-		if redact && fp.secret {
-			out[prefix+fp.key] = redactedMask
-			continue
+		value := fp.format(field, fp.separator)
+		if mask != nil && fp.secret {
+			value = mask(value)
 		}
-		out[prefix+fp.key] = fp.format(field, fp.separator)
+		out[prefix+fp.key] = value
 	}
 	return nil
 }
