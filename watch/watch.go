@@ -2,9 +2,12 @@
 // whenever a watched .env file changes on disk.
 //
 // It is implemented with the standard library only (no external dependencies),
-// so it inherits oneenv's zero-dependency guarantee. On BSD-family systems
-// (including macOS) it uses kqueue for real, event-driven notifications; on
-// other platforms it falls back to modification-time polling.
+// so it inherits oneenv's zero-dependency guarantee. On Linux it uses inotify,
+// on BSD-family systems (including macOS) kqueue, on Windows
+// ReadDirectoryChangesW; elsewhere it falls back to modification-time polling.
+//
+// For a single call site, oneenv.WithWatch does the same thing as an option on
+// Load. This package remains the explicit, blocking form.
 package watch
 
 import (
@@ -12,10 +15,11 @@ import (
 	"time"
 
 	"github.com/bakhod1r/oneenv"
+	"github.com/bakhod1r/oneenv/internal/notify"
 )
 
 // PollInterval is the modification-time polling cadence used on platforms
-// without a native notifier. It is ignored where kqueue is available.
+// without a native notifier. It is ignored where one is available.
 var PollInterval = time.Second
 
 // Watch loads the configuration into v once, then re-decodes it into v every
@@ -33,8 +37,9 @@ func Watch(ctx context.Context, v any, onReload func(error), opts ...oneenv.Opti
 	if err := oneenv.Load(v, opts...); err != nil {
 		return err
 	}
+	notify.PollInterval = PollInterval
 	files := oneenv.FilesFor(opts...)
-	return notify(ctx, files, func() {
+	return notify.Notify(ctx, files, func() {
 		onReload(oneenv.Load(v, opts...))
 	})
 }

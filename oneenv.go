@@ -31,7 +31,12 @@ func Load(v any, opts ...Option) error {
 	if err := decodeFiles(v, cfg, vals, raw, origin); err != nil {
 		return err
 	}
-	return cfg.writeExample(v, opts)
+	if err := cfg.writeExample(v, opts); err != nil {
+		return err
+	}
+	// Watching only starts once the configuration is known to be good.
+	cfg.startWatch(v, opts)
+	return nil
 }
 
 // resolveFiles returns the .env files this call reads, expanded through the

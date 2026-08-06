@@ -1,6 +1,6 @@
 //go:build darwin || dragonfly || freebsd || netbsd || openbsd
 
-package watch
+package notify
 
 import (
 	"context"
@@ -13,12 +13,12 @@ import (
 // deletes, renames, attribute changes and (for directories) additions.
 const vnodeEvents = syscall.NOTE_WRITE | syscall.NOTE_DELETE | syscall.NOTE_RENAME | syscall.NOTE_ATTRIB
 
-// notify watches each file and its parent directory via kqueue and calls
+// Notify watches each file and its parent directory via kqueue and calls
 // onChange whenever any of them changes. Watching the directory as well as the
 // file catches atomic saves, where an editor replaces the file by renaming a
 // temp file over it and the file-level watch would otherwise be lost. It
 // returns when ctx is cancelled.
-func notify(ctx context.Context, files []string, onChange func()) error {
+func Notify(ctx context.Context, files []string, onChange func()) error {
 	kq, err := syscall.Kqueue()
 	if err != nil {
 		return err

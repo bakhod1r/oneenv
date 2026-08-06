@@ -1,7 +1,8 @@
 // Example: hot-reload configuration when the .env file changes.
 //
-// watch.Watch writes to the same struct from its own goroutine, so guard it
-// with a mutex (as here) or swap a pointer inside onReload.
+// oneenv.WithWatch re-decodes into the same struct from its own goroutine, so
+// the value it writes is copied under a mutex inside onReload and the rest of
+// the program reads the copy.
 package main
 
 import (
@@ -14,7 +15,6 @@ import (
 	"time"
 
 	"github.com/bakhod1r/oneenv"
-	"github.com/bakhod1r/oneenv/watch"
 )
 
 type Config struct {
@@ -27,9 +27,9 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	// live is owned by Watch's goroutine; current is what the rest of the
-	// program reads. onReload runs on the goroutine that just wrote live, so
-	// copying there is the safe hand-off point.
+	// live is written by the watcher's goroutine; current is what the rest of
+	// the program reads. onReload runs on the goroutine that just wrote live,
+	// so copying there is the safe hand-off point.
 	var (
 		live    Config
 		mu      sync.RWMutex
@@ -47,29 +47,29 @@ func main() {
 		log.Printf("reloaded: %+v", live)
 	}
 
-	// Watch reports errors only for reloads, so seed current with an initial
-	// load and fail fast if the configuration is broken at startup.
-	if err := oneenv.Load(&current, oneenv.WithEnvFiles()); err != nil {
+	// Load returns as soon as the first decode is done; a broken configuration
+	// fails fast here rather than in the background.
+	err := oneenv.Load(&live,
+		oneenv.WithEnvFiles(),
+		oneenv.WithContext(ctx),
+		oneenv.WithWatch(onReload),
+	)
+	if err != nil {
 		log.Fatal(err)
 	}
+	current = live
 
-	go func() {
-		ticker := time.NewTicker(2 * time.Second)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-ticker.C:
-				mu.RLock()
-				fmt.Printf("serving on %s:%d\n", current.Host, current.Port)
-				mu.RUnlock()
-			}
+	// Edit .env while this runs.
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			mu.RLock()
+			fmt.Printf("serving on %s:%d\n", current.Host, current.Port)
+			mu.RUnlock()
 		}
-	}()
-
-	// Blocks until ctx is cancelled. Edit .env while it runs.
-	if err := watch.Watch(ctx, &live, onReload, oneenv.WithEnvFiles()); err != nil {
-		log.Fatal(err)
 	}
 }

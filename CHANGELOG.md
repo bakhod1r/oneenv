@@ -5,6 +5,33 @@ All notable changes to **oneenv** are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.0] - 2026-08-06
+
+### Added
+
+- **`WithWatch(onReload)`** — hot reload as an option, without importing a
+  second package:
+
+  ```go
+  oneenv.Load(&cfg,
+      oneenv.WithContext(ctx),
+      oneenv.WithWatch(func(err error) { ... }),
+  )
+  ```
+
+  `Load` returns after the first decode and keeps re-decoding into the same
+  target in the background until the `WithContext` context is cancelled. A
+  failed reload leaves the last good values in place, and watching never starts
+  if the initial load fails.
+- **`SetPollInterval` / `PollInterval`** — the modification-time cadence used
+  where no native notifier exists.
+
+### Changed
+
+- The notifier implementations moved to `internal/notify`, shared by
+  `WithWatch` and the `oneenv/watch` package. `watch.Watch` and
+  `watch.PollInterval` are unchanged.
+
 ## [1.5.1] - 2026-08-06
 
 ### Added
@@ -225,6 +252,7 @@ package.
 - **Runnable examples** for the full API surface, so pkg.go.dev renders
   interactive examples.
 
+[1.6.0]: https://github.com/bakhod1r/oneenv/releases/tag/v1.6.0
 [1.5.1]: https://github.com/bakhod1r/oneenv/releases/tag/v1.5.1
 [1.5.0]: https://github.com/bakhod1r/oneenv/releases/tag/v1.5.0
 [1.4.3]: https://github.com/bakhod1r/oneenv/releases/tag/v1.4.3

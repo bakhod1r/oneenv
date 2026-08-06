@@ -1,6 +1,6 @@
 //go:build linux
 
-package watch
+package notify
 
 import (
 	"context"
@@ -16,14 +16,14 @@ import (
 const inotifyEvents = syscall.IN_MODIFY | syscall.IN_CREATE | syscall.IN_MOVED_TO |
 	syscall.IN_MOVED_FROM | syscall.IN_DELETE | syscall.IN_ATTRIB
 
-// notify watches the parent directory of each file with inotify and calls
+// Notify watches the parent directory of each file with inotify and calls
 // onChange whenever a watched file changes. It returns when ctx is cancelled.
 //
 // The inotify fd is non-blocking and multiplexed with an eventfd through epoll:
 // cancellation writes to the eventfd, which wakes the epoll wait. Closing the
 // inotify fd would NOT unblock a thread already blocked in read(2), so the
 // wakeup has to be an explicit readiness event.
-func notify(ctx context.Context, files []string, onChange func()) error {
+func Notify(ctx context.Context, files []string, onChange func()) error {
 	fd, err := syscall.InotifyInit1(syscall.IN_CLOEXEC | syscall.IN_NONBLOCK)
 	if err != nil {
 		return err

@@ -1,6 +1,6 @@
 //go:build !(darwin || dragonfly || freebsd || netbsd || openbsd || windows || linux)
 
-package watch
+package notify
 
 import (
 	"context"
@@ -9,11 +9,11 @@ import (
 	"time"
 )
 
-// notify detects changes by polling the watched files' modification times and
+// Notify detects changes by polling the watched files' modification times and
 // sizes at PollInterval, calling onChange when any of them changes (including
 // creation or deletion). It returns when ctx is cancelled. This is the
 // portable fallback used where kqueue is unavailable.
-func notify(ctx context.Context, files []string, onChange func()) error {
+func Notify(ctx context.Context, files []string, onChange func()) error {
 	interval := PollInterval
 	if interval <= 0 {
 		interval = time.Second

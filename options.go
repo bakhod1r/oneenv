@@ -36,6 +36,8 @@ type config struct {
 	strictKeys     bool
 	examplePath    string
 	writeExampleOn bool
+	watch          bool
+	onReload       func(error)
 	report         *Report
 	// secretReveal is the number of leading/trailing characters of a secret left
 	// visible in log and table output; secretRevealSet distinguishes an explicit

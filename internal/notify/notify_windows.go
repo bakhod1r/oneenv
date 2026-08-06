@@ -1,6 +1,6 @@
 //go:build windows
 
-package watch
+package notify
 
 import (
 	"context"
@@ -42,11 +42,11 @@ type fileNotifyInformation struct {
 	// FileName [1]uint16 follows here in the raw buffer.
 }
 
-// notify watches the parent directory of each file with ReadDirectoryChangesW
+// Notify watches the parent directory of each file with ReadDirectoryChangesW
 // and calls onChange whenever a watched file changes. Each directory is read in
 // its own goroutine with a blocking call; ctx cancellation closes the handles,
 // which unblocks the reads and ends the goroutines. It returns when ctx is done.
-func notify(ctx context.Context, files []string, onChange func()) error {
+func Notify(ctx context.Context, files []string, onChange func()) error {
 	// Group watched file basenames by their parent directory.
 	byDir := make(map[string]map[string]struct{})
 	for _, f := range files {
