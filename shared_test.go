@@ -200,3 +200,84 @@ func TestWatchStartsOnce(t *testing.T) {
 		t.Fatalf("Port = %s, want 7", got)
 	}
 }
+
+func TestWithOnceReadsOnce(t *testing.T) {
+	type onceConf struct {
+		Port int `env:"PORT" default:"8080"`
+	}
+	oneenv.ResetShared[onceConf]()
+	t.Cleanup(oneenv.ResetShared[onceConf])
+
+	var decodes int64
+	count := oneenv.WithMutator(func(_ context.Context, _, value string) (string, error) {
+		atomicAdd(&decodes)
+		return value, nil
+	})
+
+	var first onceConf
+	err := oneenv.Load(&first, oneenv.WithOnce(), oneenv.WithFiles(),
+		oneenv.WithLookuper(oneenv.MapLookuper{"PORT": "9090"}), count)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if first.Port != 9090 {
+		t.Fatalf("Port = %d, want 9090", first.Port)
+	}
+
+	// A second target, different options: served from the first decode.
+	var second onceConf
+	err = oneenv.Load(&second, oneenv.WithOnce(), oneenv.WithFiles(),
+		oneenv.WithLookuper(oneenv.MapLookuper{"PORT": "1"}), count)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if second.Port != 9090 {
+		t.Fatalf("the second Load re-read the configuration: Port = %d", second.Port)
+	}
+	if n := atomicGet(&decodes); n != 1 {
+		t.Fatalf("decoded %d times, want 1", n)
+	}
+
+	// Each caller owns its copy.
+	second.Port = 1
+	if first.Port != 9090 {
+		t.Fatal("the targets share memory")
+	}
+
+	// Parse takes the same path, and Shared[T] shares the same decode.
+	third, err := oneenv.Parse[onceConf](oneenv.WithOnce())
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if third.Port != 9090 {
+		t.Fatalf("Parse with WithOnce re-read the configuration: Port = %d", third.Port)
+	}
+	shared, err := oneenv.Shared[onceConf]()
+	if err != nil {
+		t.Fatalf("Shared: %v", err)
+	}
+	if shared.Port != 9090 {
+		t.Fatalf("Shared saw a different value: Port = %d", shared.Port)
+	}
+	if n := atomicGet(&decodes); n != 1 {
+		t.Fatalf("decoded %d times in total, want 1", n)
+	}
+}
+
+func TestWithOnceRemembersTheError(t *testing.T) {
+	type brokenOnce struct {
+		Port int `env:"PORT,required"`
+	}
+	oneenv.ResetShared[brokenOnce]()
+	t.Cleanup(oneenv.ResetShared[brokenOnce])
+
+	var cfg brokenOnce
+	if err := oneenv.Load(&cfg, oneenv.WithOnce(), oneenv.WithFiles(),
+		oneenv.WithLookuper(oneenv.MapLookuper{})); err == nil {
+		t.Fatal("expected the required field to fail")
+	}
+	if err := oneenv.Load(&cfg, oneenv.WithOnce(), oneenv.WithFiles(),
+		oneenv.WithLookuper(oneenv.MapLookuper{"PORT": "8080"})); err == nil {
+		t.Fatal("the second Load hid the first one's error")
+	}
+}

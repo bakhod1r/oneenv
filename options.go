@@ -38,6 +38,7 @@ type config struct {
 	examplePath    string
 	writeExampleOn bool
 	watch          bool
+	once           bool // read this type once per process, see WithOnce
 	onReload       func(error)
 	mu             sync.Locker // guards the target across a WithWatch reload
 	report         *Report

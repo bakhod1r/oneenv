@@ -171,12 +171,23 @@ err := oneenv.Load(&cfg, oneenv.WithFiles(".env", ".env.local"))
 `v` must be a non-nil pointer to a struct. Both `Parse` and `Load` are safe for
 concurrent use.
 
-### `Shared` — load once per process
+### `WithOnce` — read the files once per process
 
-When the configuration is needed in several packages, `Shared[T]` reads it once
-and hands the same value to everyone afterwards. The first call does the work,
-concurrent callers wait for it, and later calls return its result — including
-its error — without touching the files again:
+When the configuration is loaded from several packages, `WithOnce` reads it once
+and serves every later call from that first decode:
+
+```go
+cfg, err := oneenv.Parse[Config](oneenv.WithOnce())
+
+var cfg Config
+err := oneenv.Load(&cfg, oneenv.WithOnce())
+```
+
+The first call does the work, concurrent callers wait for it, and later ones are
+handed a **copy** of the result — its error included — without touching the
+files. Options they pass are ignored: the first call decided.
+
+`Shared[T]` is the same thing in one call, returning the value everyone shares:
 
 ```go
 cfg, err := oneenv.Shared[Config]()   // first call loads
@@ -185,10 +196,10 @@ cfg2, _ := oneenv.Shared[Config]()    // same pointer, no re-read
 cfg := oneenv.MustShared[Config]()    // panics instead, for startup paths
 ```
 
-Options passed by later calls are ignored: the first call decided. Treat the
-returned value as read-only — nothing writes to it afterwards. To also follow
-the files, use [`SharedLive`](#hot-reload), which keeps its updates behind a
-lock.
+`Shared` hands back one pointer, so treat that value as read-only; `WithOnce`
+gives each caller its own copy. Both share the same decode, and
+`ResetShared[T]()` forgets it — for tests. To also follow the files, use
+[`SharedLive`](#hot-reload), which keeps its updates behind a lock.
 
 ### `Unmarshal` — decode raw bytes
 
@@ -251,6 +262,7 @@ options are applied in order, and a later option wins over an earlier one.
 | `WithBaseDir(dir)` | Resolve relative `.env` paths against `dir`, e.g. `/etc/myapp/.env`. |
 | `WithStrictKeys()` | Turn a key no field consumes into an error — catches typos like `PORRT`. |
 | `WithReport(&r)` | Capture where every value came from into a `Report`, for `Source` / `Explain`. |
+| `WithOnce()` | Read the files once per process for this type; later calls are served from that decode. |
 | `WithWatch([onReload])` | Re-decode into the same target whenever a watched `.env` file changes. Ends with the `WithContext` context. |
 | `WithMutex(mu)` | The lock guarding the target, taken by oneenv while it swaps in a reload. |
 | `WithWriteExample([path])` | Write a generated example file on every successful load. Defaults to sitting next to the `.env` it documents. |

@@ -5,6 +5,22 @@ All notable changes to **oneenv** are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.10.0] - 2026-08-06
+
+### Added
+
+- **`WithOnce()`** — the once-per-process load as an option, so `Load` and
+  `Parse` get it without a different entry point:
+
+  ```go
+  cfg, err := oneenv.Parse[Config](oneenv.WithOnce())
+  ```
+
+  The first call decodes, concurrent callers wait for it, and later ones are
+  handed a copy of the result — error included — without touching the files.
+  `Shared[T]` and `MustShared[T]` share the same decode, so the two forms can be
+  mixed.
+
 ## [1.9.2] - 2026-08-06
 
 ### Fixed
@@ -324,6 +340,7 @@ package.
 - **Runnable examples** for the full API surface, so pkg.go.dev renders
   interactive examples.
 
+[1.10.0]: https://github.com/bakhod1r/oneenv/releases/tag/v1.10.0
 [1.9.2]: https://github.com/bakhod1r/oneenv/releases/tag/v1.9.2
 [1.9.1]: https://github.com/bakhod1r/oneenv/releases/tag/v1.9.1
 [1.9.0]: https://github.com/bakhod1r/oneenv/releases/tag/v1.9.0

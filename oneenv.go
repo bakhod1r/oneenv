@@ -16,6 +16,9 @@ import (
 // Load is safe for concurrent use.
 func Load(v any, opts ...Option) error {
 	cfg := newConfig(opts)
+	if cfg.once {
+		return loadOnce(v, opts)
+	}
 	files, missingOK := cfg.resolveFiles()
 	cfg.logFiles(files)
 

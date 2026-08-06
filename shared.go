@@ -28,6 +28,59 @@ func sharedOf[T any]() *sharedEntry {
 	return e.(*sharedEntry)
 }
 
+// WithOnce reads the configuration once per process for the target's type and
+// serves every later call from what the first one decoded — so a config loaded
+// from six packages is parsed once:
+//
+//	cfg, err := oneenv.Parse[Config](oneenv.WithOnce())
+//
+//	var cfg Config
+//	err := oneenv.Load(&cfg, oneenv.WithOnce())
+//
+// The first call does the work; concurrent callers wait for it, and later ones
+// are handed a copy of the result, its error included, without touching the
+// files. Options passed by those later calls are ignored — the first call
+// decided. Each caller gets its own copy, so writing to one target cannot
+// disturb another.
+//
+// Shared and MustShared are the same thing in one call. Use ResetShared in
+// tests to forget what was remembered.
+func WithOnce() Option {
+	return func(c *config) { c.once = true }
+}
+
+// loadOnce is the WithOnce path: the first call for this type decodes into the
+// registry, and every call copies the stored value into its own target.
+func loadOnce(v any, opts []Option) error {
+	rv := reflect.ValueOf(v)
+	if rv.Kind() != reflect.Pointer || rv.IsNil() || rv.Elem().Kind() != reflect.Struct {
+		return ErrNotAStruct
+	}
+	t := rv.Elem().Type()
+
+	e, _ := sharedRegistry.LoadOrStore(t, &sharedEntry{})
+	entry := e.(*sharedEntry)
+	entry.once.Do(func() {
+		stored := reflect.New(t)
+		// The stored value is decoded by the plain path: WithOnce is switched
+		// off so this cannot recurse.
+		if err := Load(stored.Interface(), append(append([]Option{}, opts...), noOnce)...); err != nil {
+			entry.err = err
+			return
+		}
+		entry.value = stored.Interface()
+	})
+	if entry.err != nil {
+		return entry.err
+	}
+	rv.Elem().Set(reflect.ValueOf(entry.value).Elem())
+	return nil
+}
+
+// noOnce switches WithOnce back off, so the load that fills the registry does
+// not re-enter it.
+func noOnce(c *config) { c.once = false }
+
 // Shared loads the configuration once per process and returns the same value to
 // every caller afterwards. It is the answer to "config is needed in six
 // packages and should not be parsed six times":
@@ -46,7 +99,7 @@ func Shared[T any](opts ...Option) (*T, error) {
 	e := sharedOf[T]()
 	e.once.Do(func() {
 		v := new(T)
-		if err := Load(v, opts...); err != nil {
+		if err := Load(v, append(append([]Option{}, opts...), noOnce)...); err != nil {
 			e.err = err
 			return
 		}
