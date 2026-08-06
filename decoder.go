@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"reflect"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -13,6 +14,12 @@ import (
 // values and lookuper. All field errors are collected and returned joined, so
 // a caller sees every problem at once rather than one at a time.
 func decode(v any, cfg config, fileVals, rawVals map[string]string) error {
+	return decodeFiles(v, cfg, fileVals, rawVals, nil)
+}
+
+// decodeFiles is decode that also knows which file each key came from, so a
+// report can name it.
+func decodeFiles(v any, cfg config, fileVals, rawVals, origin map[string]string) error {
 	rv := reflect.ValueOf(v)
 	if rv.Kind() != reflect.Pointer || rv.IsNil() || rv.Elem().Kind() != reflect.Struct {
 		return ErrNotAStruct
@@ -29,6 +36,7 @@ func decode(v any, cfg config, fileVals, rawVals map[string]string) error {
 		env:      cfg.lookuper,
 		file:     fileVals,
 		raw:      rawVals,
+		origin:   origin,
 		override: cfg.override,
 		prefix:   cfg.prefix,
 	}
@@ -39,8 +47,17 @@ func decode(v any, cfg config, fileVals, rawVals map[string]string) error {
 		cfg.rec = &recorder{}
 	}
 
+	// Strict-key checking needs the set of keys the struct consumes, which is
+	// only known once every field has been walked.
+	if cfg.strictKeys {
+		cfg.known = make(map[string]bool)
+	}
+
 	var errs []error
 	decodeStruct(rv.Elem(), "", cfg.prefix, src, cfg, &errs)
+	if cfg.strictKeys {
+		errs = append(errs, unknownKeyErrors(fileVals, origin, cfg)...)
+	}
 	if err := errors.Join(errs...); err != nil {
 		return err
 	}
@@ -49,7 +66,24 @@ func decode(v any, cfg config, fileVals, rawVals map[string]string) error {
 			return err
 		}
 	}
-	return cfg.printTable()
+	return cfg.finish()
+}
+
+// unknownKeyErrors reports every key present in the .env files that no field of
+// the struct consumes — almost always a typo, and silent without this check.
+func unknownKeyErrors(fileVals, origin map[string]string, cfg config) []error {
+	keys := make([]string, 0, len(fileVals))
+	for k := range fileVals {
+		if !cfg.known[k] {
+			keys = append(keys, k)
+		}
+	}
+	sort.Strings(keys)
+	errs := make([]error, 0, len(keys))
+	for _, k := range keys {
+		errs = append(errs, &UnknownKeyError{Key: k, File: origin[k]})
+	}
+	return errs
 }
 
 func decodeStruct(rv reflect.Value, path, keyPrefix string, src Lookuper, cfg config, errs *[]error) {
@@ -85,32 +119,66 @@ func decodeStruct(rv reflect.Value, path, keyPrefix string, src Lookuper, cfg co
 			defer func() { _ = os.Unsetenv(key) }()
 		}
 
+		// Record every key this struct consumes, including aliases, so the
+		// strict-key check knows what is legitimate.
+		if cfg.known != nil {
+			cfg.known[fp.key] = true
+			for _, a := range fp.aliases {
+				cfg.known[a] = true
+			}
+		}
+
+		// The entry this field contributes to the report and the table.
+		entry := Entry{
+			Key:      keyPrefix + fp.key,
+			Field:    fieldPath,
+			Source:   SourceUnset,
+			Default:  fp.defval,
+			Type:     fp.typeName,
+			Required: fp.required || cfg.requiredAll,
+			Secret:   fp.secret,
+		}
+
 		// Secrets and ",noexpand" fields read the literal text, so a '$' in the
 		// value is never mistaken for a variable reference.
-		raw, ok := "", false
-		if fp.noExpand {
-			raw, ok = lookupRaw(src, fp.key)
-		} else {
-			raw, ok = src.Lookup(fp.key)
+		lookup := func(key string) (string, bool) {
+			if fp.noExpand {
+				return lookupRaw(src, key)
+			}
+			return src.Lookup(key)
 		}
-		// The layer that won, reported only when a logger or table asked for it.
-		origin := SourceUnset
+		raw, ok := lookup(fp.key)
+		usedKey := fp.key
+		// An alias is the previous spelling of a key. It is consulted only when
+		// the current one is absent, and using it earns a warning.
+		if !ok {
+			for _, a := range fp.aliases {
+				if v, found := lookup(a); found {
+					raw, ok, usedKey = v, true, a
+					cfg.logDeprecated(a, "use "+fp.key+" instead")
+					break
+				}
+			}
+		}
+		if ok && fp.deprecated != "" {
+			cfg.logDeprecated(keyPrefix+fp.key, fp.deprecated)
+		}
 		if ok && cfg.tracing() {
-			_, origin, _ = lookupSource(src, fp.key)
+			_, entry.Source, entry.File, _ = lookupSource(src, usedKey)
 		}
 
 		if !ok {
 			if fp.hasDefant {
-				raw, origin = fp.defval, SourceDefault
+				raw, entry.Source = fp.defval, SourceDefault
 			} else if fp.initField {
 				initValue(field)
-				cfg.logField(keyPrefix+fp.key, fieldPath, SourceUnset, "", fp.secret)
+				cfg.logField(entry)
 				continue
 			} else if fp.required || cfg.requiredAll {
 				*errs = append(*errs, &FieldError{Field: fieldPath, Key: fp.key, Err: ErrRequired})
 				continue
 			} else {
-				cfg.logField(keyPrefix+fp.key, fieldPath, SourceUnset, "", fp.secret)
+				cfg.logField(entry)
 				continue // leave zero value
 			}
 		}
@@ -146,11 +214,19 @@ func decodeStruct(rv reflect.Value, path, keyPrefix string, src Lookuper, cfg co
 			continue
 		}
 
+		// `pattern` and `enum` constrain the text before it is decoded, so the
+		// error names the rule that was broken rather than a type failure.
+		if err := fp.validate(raw); err != nil {
+			*errs = append(*errs, &FieldError{Field: fieldPath, Key: fp.key, Err: err})
+			continue
+		}
+
 		if err := fp.set(field, raw, fp.separator); err != nil {
 			*errs = append(*errs, &FieldError{Field: fieldPath, Key: fp.key, Err: err})
 			continue
 		}
-		cfg.logField(keyPrefix+fp.key, fieldPath, origin, raw, fp.secret)
+		entry.Value = raw
+		cfg.logField(entry)
 	}
 }
 
@@ -266,6 +342,7 @@ type layeredSource struct {
 	env      Lookuper
 	file     map[string]string
 	raw      map[string]string // literal, pre-expansion file values
+	origin   map[string]string // key -> file it came from, nil when untracked
 	override bool
 	prefix   string
 }

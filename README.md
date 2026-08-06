@@ -224,43 +224,152 @@ options are applied in order, and a later option wins over an earlier one.
 | `WithMutator(m)` | Transform each raw value before decoding (receives a `context.Context`). |
 | `WithValidator(fn)` | Run a validation callback on the decoded struct — plug in any validator, zero-dep. |
 | `WithContext(ctx)` | Context passed to mutators (also via `LoadContext` / `ParseContext`). |
-| `WithTable(w)` | Print an aligned `KEY / VALUE / SOURCE` table to `w` after a successful load. Secrets are partially masked. |
-| `WithLogger(l)` | Log every file read and field resolved to a `*slog.Logger` at debug level. Secrets are partially masked. |
-| `WithSecretReveal(n)` | Characters of a secret left visible at each end in log/table output (default `4`, `0` masks everything). |
+| `WithTable()` | Print an aligned `KEY / VALUE / SOURCE` table after a successful load. Secrets masked. |
+| `WithLogger([l])` | Log every file read and field resolved to a `*slog.Logger` (default `slog.Default()`) at debug level. |
+| `WithOutput(w)` | Send everything oneenv prints to `w` instead of `os.Stdout`. |
+| `WithSecretReveal(n)` | Leave the first and last `n` characters of a secret visible in printed output. Off by default. |
+| `WithRedacted()` | Mask every secret in full, overriding `WithSecretReveal` whatever the order. |
+| `WithBaseDir(dir)` | Resolve relative `.env` paths against `dir`, e.g. `/etc/myapp/.env`. |
+| `WithStrictKeys()` | Turn a key no field consumes into an error — catches typos like `PORRT`. |
+| `WithReport(&r)` | Capture where every value came from into a `Report`, for `Source` / `Explain`. |
+| `WithWriteExample(path)` | Write a generated `.env.example` to `path` on every successful load. |
 
 ### Startup output
 
-`Load` is silent by default. Opt in with `WithTable` for a human-readable banner:
+`Load` is silent by default, and never asks for a writer. Opt in with
+`WithTable` for a human-readable banner:
 
 ```go
-err := oneenv.Load(&cfg, oneenv.WithTable(os.Stdout))
+err := oneenv.Load(&cfg, oneenv.WithTable())
 ```
 
 ```
-KEY          VALUE         SOURCE
-API_KEY      sk-l****9f2a  env
-DB_PASSWORD  sup3****word  env
-DEBUG        ""            unset
-HOST         localhost     default
-PORT         9090          env
+KEY          VALUE       SOURCE
+API_KEY      ****        .env.local
+DB_PASSWORD  ****        env
+DEBUG        ""          unset
+HOST         localhost   default
+PORT         9090        .env
 ```
 
-`SOURCE` names the layer that won: `env`, `file`, `default` or `unset`. Fields
-marked `,secret` and every `Secret[T]` show only their first and last four
-characters — the plaintext never reaches the writer. Use
-`WithSecretReveal(0)` to mask them completely.
+`SOURCE` names where the value came from: **the file that supplied it**, or
+`env`, `default`, `unset`. Fields marked `,secret` and every `Secret[T]` are
+masked in full.
 
-For structured output, pass a logger instead (or as well):
+To reveal a window on a secret — enough to tell two keys apart in a log, not
+enough to use one — pass `WithSecretReveal(n)`:
 
 ```go
-err := oneenv.Load(&cfg, oneenv.WithLogger(slog.Default()))
-// level=DEBUG msg="oneenv: field resolved" key=API_KEY field=APIKey source=env value=sk-l****9f2a secret=true
+oneenv.Load(&cfg, oneenv.WithTable(), oneenv.WithSecretReveal(4))
+// API_KEY   sk-l****9f2a   .env.local
 ```
 
-To print an already-decoded config at any later point, use `oneenv.Print`:
+`WithRedacted()` forces the full mask back on, whatever the option order — use
+it behind a production flag. A value too short to reveal both ends without
+overlapping is always masked completely.
+
+Output goes to stdout; `WithOutput(w)` redirects it. For structured output, pass
+a logger instead (or as well):
 
 ```go
-oneenv.Print(os.Stdout, cfg) // KEY / VALUE table, secrets masked
+err := oneenv.Load(&cfg, oneenv.WithLogger())
+// level=DEBUG msg="oneenv: field resolved" key=PORT field=Port source=file value=9090 file=.env
+```
+
+To print an already-decoded config at any later point:
+
+```go
+oneenv.Print(cfg) // KEY / VALUE table, secrets masked
+```
+
+### Where did this value come from?
+
+`WithReport` captures the full resolution detail, so a surprising value can be
+traced long after the load:
+
+```go
+var rep oneenv.Report
+oneenv.Load(&cfg, oneenv.WithReport(&rep))
+
+src, _ := rep.Source("PORT")   // ".env.production"
+fmt.Println(rep.Explain("PORT"))
+```
+
+```
+Key      : PORT
+Value    : 8080
+Source   : .env.local
+Default  : 8000
+Required : true
+Secret   : false
+Type     : int
+```
+
+### Catching typos
+
+`WithStrictKeys()` turns a key that no field consumes into an error, so a
+misspelling fails at startup instead of silently doing nothing:
+
+```dotenv
+HOST=localhost
+PORT=8080
+PORRT=9999
+```
+
+```
+oneenv: unknown environment variable: PORRT (in .env)
+```
+
+Match it with `errors.Is(err, oneenv.ErrUnknownKey)`.
+
+### Diff and fingerprint
+
+```go
+for _, c := range oneenv.Diff(oldCfg, newCfg) {
+    fmt.Println(c)              // PORT: 8080 -> 9090
+}
+fmt.Println(oneenv.DiffString(oldCfg, newCfg))  // aligned KEY / OLD / NEW table
+
+log.Printf("config hash: %s", oneenv.Hash(cfg)) // config hash: 7d2d4d19
+```
+
+`Diff` masks secrets on both sides but still reports that one changed. `Hash` is
+a short, stable fingerprint of the effective configuration — print it on deploy
+to see at a glance whether anything moved.
+
+### Generating `.env.example`
+
+```go
+oneenv.Load(&cfg, oneenv.WithWriteExample(".env.example"))
+```
+
+The file is regenerated from the struct on every successful load, using each
+field's `example` tag (falling back to `default`), and is left untouched when
+its contents would not change. Secret values are never written.
+
+## CLI subcommands
+
+```bash
+oneenv doctor                 # check files, duplicates, empty and shadowed keys
+oneenv lint                   # syntax and naming problems, non-zero exit for CI
+oneenv format [-w]            # sort keys, keeping the comments above them
+oneenv explain PORT           # where one key's value comes from
+oneenv init                   # create a starter .env and .env.example
+oneenv migrate [-w] OLD=NEW   # rename keys across the files
+```
+
+```console
+$ oneenv lint -f .env
+.env:4: duplicate key PORT (first at line 2)
+.env:5: key lower_key is not UPPER_SNAKE_CASE
+.env:6: invalid line
+oneenv: 3 problem(s) found
+
+$ oneenv explain PORT -f .env
+Key      : PORT
+Value    : 9090
+Source   : .env:4
+Shadowed : .env:2
 ```
 
 ## Struct tags
@@ -296,6 +405,11 @@ type Config struct {
 | `layout:"..."` | `time.Time` | `time.Parse` layout (default `time.RFC3339`). |
 | `envPrefix:"DB_"` | nested struct | Prefix applied to every key inside the nested struct. |
 | `desc:"..."` | any field | Human description, surfaced by [`Usage`](#usage--generate---help). |
+| `example:"..."` | any field | Sample value written to the generated `.env.example`, in place of the default. |
+| `alias:"OLD_KEY"` | any field | Former spelling(s), comma-separated. Consulted only when the current key is absent, and using one logs a deprecation warning. |
+| `deprecated:"..."` | any field | Warn whenever this key is used at all, with the given hint. |
+| `enum:"dev,test,prod"` | any field | Reject any value outside the list, with `ErrNotAllowed`. |
+| `pattern:"^[a-z]+$"` | any field | Reject a value that does not match the regexp, with `ErrPattern`. |
 
 Multiple options combine: `env:"TOKEN,required,file"` reads a required secret file.
 

@@ -5,6 +5,50 @@ All notable changes to **oneenv** are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] - 2026-08-06
+
+### Added
+
+- **Typo detection** — `WithStrictKeys()` turns a `.env` key that no field
+  consumes into an `*UnknownKeyError` (`errors.Is` matches `ErrUnknownKey`), so
+  `PORRT=9999` fails at startup instead of silently doing nothing.
+- **Source tracing** — `WithReport(&rep)` captures the full resolution detail of
+  a load. `rep.Source("PORT")` names the **file** a value came from
+  (`.env.production`) or the layer (`env`, `default`, `unset`), `rep.Explain`
+  renders everything known about one key, and `rep.Entries()` exposes the rest.
+- **`Diff` / `DiffString`** — report every key whose value differs between two
+  configurations, with secrets masked on both sides but still reported as
+  changed.
+- **`Hash` / `HashFull`** — a short, stable fingerprint of the effective
+  configuration, for printing on deploy.
+- **`WithBaseDir(dir)`** — resolve relative `.env` paths against a directory.
+- **`WithWriteExample(path)`** — regenerate a `.env.example` from the struct on
+  every successful load, rewriting the file only when its contents change.
+- **`WithOutput(w)`** — the single place a writer is named; everything oneenv
+  prints goes to `os.Stdout` otherwise.
+- **`WithRedacted()`** — mask every secret in full, overriding
+  `WithSecretReveal` whatever the option order.
+- **New struct tags** — `example` (sample value for `.env.example`), `alias`
+  (former key spellings, with a deprecation warning when used), `deprecated`
+  (warn whenever the key is used), `enum` (allowed values, `ErrNotAllowed`) and
+  `pattern` (regexp, `ErrPattern`). Each has an `env-*` spelling too.
+- **CLI subcommands** — `oneenv doctor`, `lint`, `format [-w]`, `explain KEY`,
+  `init` and `migrate [-w] OLD=NEW`.
+
+### Changed
+
+- **Secrets are now masked in full by default** in the table, logger and `Print`
+  output. `WithSecretReveal(n)` is the only way to reveal any part of one; it
+  previously defaulted to revealing four characters at each end.
+- **The `SOURCE` column names the file** a value came from, e.g. `.env.local`,
+  instead of the generic `file`.
+- `WithTable()` and `WithLogger()` no longer require an argument — the table
+  goes to stdout and the logger defaults to `slog.Default()`. `WithLogger(l)`
+  still accepts a specific logger.
+- `Print` takes the value first and no writer: `oneenv.Print(cfg)`. Pair it with
+  `WithOutput(w)` to capture the output. **This is a breaking change** to the
+  `Print` and `WithTable` signatures introduced hours earlier in 1.3.0.
+
 ## [1.3.0] - 2026-08-06
 
 ### Added
@@ -112,6 +156,7 @@ package.
 - **Runnable examples** for the full API surface, so pkg.go.dev renders
   interactive examples.
 
+[1.4.0]: https://github.com/bakhod1r/oneenv/releases/tag/v1.4.0
 [1.3.0]: https://github.com/bakhod1r/oneenv/releases/tag/v1.3.0
 [1.2.0]: https://github.com/bakhod1r/oneenv/releases/tag/v1.2.0
 [1.1.0]: https://github.com/bakhod1r/oneenv/releases/tag/v1.1.0

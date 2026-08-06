@@ -27,7 +27,9 @@ func loadLogConfig(t *testing.T, extra ...oneenv.Option) (*logConfig, *bytes.Buf
 			"API_KEY": "sk-live-abcdef9f2a",
 			"TOKEN":   "short",
 		}),
-		oneenv.WithTable(&buf),
+		oneenv.WithTable(),
+		oneenv.WithOutput(&buf),
+		oneenv.WithSecretReveal(4),
 	}, extra...)
 
 	var cfg logConfig
@@ -87,6 +89,7 @@ func TestWithLoggerMasksSecrets(t *testing.T) {
 		oneenv.WithFiles(),
 		oneenv.WithLookuper(oneenv.MapLookuper{"API_KEY": "sk-live-abcdef9f2a"}),
 		oneenv.WithLogger(logger),
+		oneenv.WithSecretReveal(4),
 	)
 	if err != nil {
 		t.Fatalf("Load: %v", err)
@@ -111,7 +114,7 @@ func TestPrintMasksSecrets(t *testing.T) {
 		Token:  "short",
 	}
 	var buf bytes.Buffer
-	if err := oneenv.Print(&buf, cfg); err != nil {
+	if err := oneenv.Print(cfg, oneenv.WithOutput(&buf), oneenv.WithSecretReveal(4)); err != nil {
 		t.Fatalf("Print: %v", err)
 	}
 	out := buf.String()

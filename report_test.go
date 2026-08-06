@@ -1,0 +1,220 @@
+package oneenv_test
+
+import (
+	"bytes"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/bakhod1r/oneenv"
+)
+
+type appConfig struct {
+	Host   string                `env:"HOST" default:"localhost" example:"api.example.com"`
+	Port   int                   `env:"PORT" default:"8000"`
+	Mode   string                `env:"MODE" default:"dev" enum:"dev,test,prod"`
+	APIKey oneenv.Secret[string] `env:"API_KEY"`
+	Server string                `env:"SERVER_HOST" alias:"HOST_NAME"`
+}
+
+// writeEnv creates a .env file in a fresh directory and returns the directory.
+func writeEnv(t *testing.T, name, body string) string {
+	t.Helper()
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return dir
+}
+
+func TestReportSourceNamesTheFile(t *testing.T) {
+	dir := writeEnv(t, ".env", "PORT=9090\nAPI_KEY=sk-live-abcdef9f2a\n")
+
+	var (
+		cfg appConfig
+		rep oneenv.Report
+	)
+	err := oneenv.Load(&cfg,
+		oneenv.WithBaseDir(dir),
+		oneenv.WithLookuper(oneenv.MapLookuper{"MODE": "prod"}),
+		oneenv.WithReport(&rep),
+	)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+
+	want := map[string]string{
+		"PORT": filepath.Join(dir, ".env"),
+		"MODE": "env",
+		"HOST": "default",
+	}
+	for key, src := range want {
+		got, ok := rep.Source(key)
+		if !ok {
+			t.Fatalf("no report entry for %s", key)
+		}
+		if got != src {
+			t.Fatalf("%s source = %q, want %q", key, got, src)
+		}
+	}
+
+	explain := rep.Explain("PORT")
+	for _, want := range []string{"Key", "PORT", "Value", "9090", "Default", "8000", "Type", "int"} {
+		if !strings.Contains(explain, want) {
+			t.Fatalf("Explain missing %q:\n%s", want, explain)
+		}
+	}
+	if e, _ := rep.Lookup("API_KEY"); e.Value != "****" {
+		t.Fatalf("report stored an unmasked secret: %q", e.Value)
+	}
+	if got := rep.Explain("NOPE"); !strings.Contains(got, "unknown key") {
+		t.Fatalf("Explain of an unknown key = %q", got)
+	}
+}
+
+func TestWithBaseDirResolvesRelativeFiles(t *testing.T) {
+	dir := writeEnv(t, ".env", "PORT=7777\n")
+	var cfg appConfig
+	if err := oneenv.Load(&cfg, oneenv.WithBaseDir(dir), oneenv.WithLookuper(oneenv.MapLookuper{})); err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Port != 7777 {
+		t.Fatalf("Port = %d, want 7777", cfg.Port)
+	}
+}
+
+func TestWithStrictKeysCatchesTypos(t *testing.T) {
+	dir := writeEnv(t, ".env", "PORT=8080\nPORRT=9999\n")
+	var cfg appConfig
+	err := oneenv.Load(&cfg,
+		oneenv.WithBaseDir(dir),
+		oneenv.WithLookuper(oneenv.MapLookuper{}),
+		oneenv.WithStrictKeys(),
+	)
+	if err == nil {
+		t.Fatal("expected an error for the unknown key")
+	}
+	if !strings.Contains(err.Error(), "PORRT") {
+		t.Fatalf("error does not name the typo: %v", err)
+	}
+	if strings.Contains(err.Error(), "PORT (") {
+		t.Fatalf("a known key was reported as unknown: %v", err)
+	}
+}
+
+func TestAliasAndEnumAndPattern(t *testing.T) {
+	var cfg appConfig
+	// The alias supplies the value when the current key is absent.
+	err := oneenv.Load(&cfg,
+		oneenv.WithFiles(),
+		oneenv.WithLookuper(oneenv.MapLookuper{"HOST_NAME": "old-style"}),
+	)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Server != "old-style" {
+		t.Fatalf("alias not honored: %q", cfg.Server)
+	}
+
+	// An enum rejects a value outside the list.
+	err = oneenv.Load(&cfg, oneenv.WithFiles(), oneenv.WithLookuper(oneenv.MapLookuper{"MODE": "staging"}))
+	if err == nil || !strings.Contains(err.Error(), "dev, test, prod") {
+		t.Fatalf("enum did not reject the value: %v", err)
+	}
+
+	type patterned struct {
+		Key string `env:"API_KEY" pattern:"^[A-Za-z0-9]{6}$"`
+	}
+	var p patterned
+	err = oneenv.Load(&p, oneenv.WithFiles(), oneenv.WithLookuper(oneenv.MapLookuper{"API_KEY": "no!"}))
+	if err == nil || !strings.Contains(err.Error(), "pattern") {
+		t.Fatalf("pattern did not reject the value: %v", err)
+	}
+}
+
+func TestWithWriteExample(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, ".env.example")
+
+	var cfg appConfig
+	err := oneenv.Load(&cfg,
+		oneenv.WithFiles(),
+		oneenv.WithLookuper(oneenv.MapLookuper{"API_KEY": "sk-live-abcdef9f2a"}),
+		oneenv.WithWriteExample(path),
+	)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("example not written: %v", err)
+	}
+	out := string(data)
+	if !strings.Contains(out, "HOST=api.example.com") {
+		t.Fatalf("the example tag was not used:\n%s", out)
+	}
+	if !strings.Contains(out, "# allowed: dev, test, prod") {
+		t.Fatalf("enum values missing from the example:\n%s", out)
+	}
+	if strings.Contains(out, "sk-live") {
+		t.Fatalf("a secret leaked into the example:\n%s", out)
+	}
+}
+
+func TestDiffAndHash(t *testing.T) {
+	a := appConfig{Host: "localhost", Port: 8080, APIKey: oneenv.NewSecret("sk-live-abcdef9f2a")}
+	b := a
+	b.Port = 9090
+	b.APIKey = oneenv.NewSecret("sk-live-000000000")
+
+	changes := oneenv.Diff(a, b)
+	var got []string
+	for _, c := range changes {
+		got = append(got, c.String())
+	}
+	joined := strings.Join(got, "\n")
+	if !strings.Contains(joined, "PORT: 8080 -> 9090") {
+		t.Fatalf("port change missing:\n%s", joined)
+	}
+	if strings.Contains(joined, "sk-live") {
+		t.Fatalf("a secret leaked into the diff:\n%s", joined)
+	}
+	if !strings.Contains(joined, "API_KEY: **** -> ****") {
+		t.Fatalf("changed secret not reported:\n%s", joined)
+	}
+	if oneenv.Diff(a, a) != nil {
+		t.Fatal("identical configs reported a change")
+	}
+	if !strings.Contains(oneenv.DiffString(a, a), "no changes") {
+		t.Fatal("DiffString did not report an identical pair")
+	}
+
+	if h := oneenv.Hash(a); len(h) != 8 || h != oneenv.Hash(a) {
+		t.Fatalf("hash is not stable or not 8 chars: %q", h)
+	}
+	if oneenv.Hash(a) == oneenv.Hash(b) {
+		t.Fatal("different configs share a hash")
+	}
+}
+
+func TestSecretsMaskedByDefault(t *testing.T) {
+	var buf bytes.Buffer
+	cfg := appConfig{APIKey: oneenv.NewSecret("sk-live-abcdef9f2a")}
+	if err := oneenv.Print(cfg, oneenv.WithOutput(&buf)); err != nil {
+		t.Fatalf("Print: %v", err)
+	}
+	if strings.Contains(buf.String(), "sk-l") {
+		t.Fatalf("a secret was revealed without WithSecretReveal:\n%s", buf.String())
+	}
+
+	// WithRedacted wins over a reveal window whatever the order.
+	buf.Reset()
+	err := oneenv.Print(cfg, oneenv.WithOutput(&buf), oneenv.WithSecretReveal(4), oneenv.WithRedacted())
+	if err != nil {
+		t.Fatalf("Print: %v", err)
+	}
+	if strings.Contains(buf.String(), "sk-l") {
+		t.Fatalf("WithRedacted did not override the reveal:\n%s", buf.String())
+	}
+}

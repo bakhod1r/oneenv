@@ -3,6 +3,7 @@ package oneenv
 import (
 	"context"
 	"os"
+	"path/filepath"
 )
 
 // Load reads the configured .env files (default ".env"), merges them with the
@@ -15,17 +16,51 @@ import (
 // Load is safe for concurrent use.
 func Load(v any, opts ...Option) error {
 	cfg := newConfig(opts)
-	files, missingOK := cfg.files, false
-	if cfg.autoEnvFiles {
-		files = envFileCascade(cfg.files, resolveEnvName(cfg))
-		missingOK = true // every file in the cascade is optional
-	}
+	files, missingOK := cfg.resolveFiles()
 	cfg.logFiles(files)
-	vals, raw, err := readFilesRaw(files, cfg.expandOptions(), missingOK)
+
+	// The per-key origin map is only built when something will report it.
+	var origin map[string]string
+	if cfg.tracing() {
+		origin = make(map[string]string)
+	}
+	vals, raw, err := readFilesOrigin(files, cfg.expandOptions(), missingOK, origin)
 	if err != nil {
 		return err
 	}
-	return decode(v, cfg, vals, raw)
+	if err := decodeFiles(v, cfg, vals, raw, origin); err != nil {
+		return err
+	}
+	return cfg.writeExample(v, opts)
+}
+
+// resolveFiles returns the .env files this call reads, expanded through the
+// environment-aware cascade and resolved against any WithBaseDir, plus whether
+// a missing file is acceptable.
+func (c config) resolveFiles() (files []string, missingOK bool) {
+	files = c.files
+	if c.autoEnvFiles {
+		files = envFileCascade(c.files, resolveEnvName(c))
+		missingOK = true // every file in the cascade is optional
+	}
+	return c.resolvePaths(files), missingOK
+}
+
+// resolvePaths joins each relative name onto the configured base directory.
+// Absolute paths and an empty base directory are left alone.
+func (c config) resolvePaths(names []string) []string {
+	if c.baseDir == "" {
+		return names
+	}
+	out := make([]string, len(names))
+	for i, n := range names {
+		if filepath.IsAbs(n) {
+			out[i] = n
+			continue
+		}
+		out[i] = filepath.Join(c.baseDir, n)
+	}
+	return out
 }
 
 // LoadContext behaves like Load but threads ctx through to any mutators
@@ -121,6 +156,12 @@ func readFiles(filenames []string, expand, missingOK bool) (map[string]string, e
 // readFilesRaw is readFiles that also returns the literal, pre-expansion values,
 // used to decode fields that opt out of expansion.
 func readFilesRaw(filenames []string, exp expandOptions, missingOK bool) (out, raw map[string]string, err error) {
+	return readFilesOrigin(filenames, exp, missingOK, nil)
+}
+
+// readFilesOrigin is readFilesRaw that also records, in origin, which file
+// supplied each key. A nil origin map skips the bookkeeping.
+func readFilesOrigin(filenames []string, exp expandOptions, missingOK bool, origin map[string]string) (out, raw map[string]string, err error) {
 	out, raw = make(map[string]string), make(map[string]string)
 	for _, name := range filenames {
 		data, err := os.ReadFile(name)
@@ -130,7 +171,7 @@ func readFilesRaw(filenames []string, exp expandOptions, missingOK bool) (out, r
 			}
 			return nil, nil, err
 		}
-		if err := parseInto(name, data, exp, out, raw); err != nil {
+		if err := parseOrigin(name, data, exp, out, raw, origin); err != nil {
 			return nil, nil, err
 		}
 	}
@@ -140,5 +181,7 @@ func readFilesRaw(filenames []string, exp expandOptions, missingOK bool) (out, r
 // isDefaultFile reports whether name is the implicit ".env" default, which is
 // allowed to be absent.
 func isDefaultFile(filenames []string, name string) bool {
-	return len(filenames) == 1 && name == ".env"
+	// WithBaseDir may have turned ".env" into "/etc/myapp/.env"; the convention
+	// is about the file name, not the directory it lives in.
+	return len(filenames) == 1 && filepath.Base(name) == ".env"
 }

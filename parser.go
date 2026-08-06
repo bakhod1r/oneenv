@@ -18,6 +18,9 @@ type parser struct {
 	// of expansion (secrets, ",noexpand") can be decoded from the literal text.
 	// It is nil when expansion is off, since raw and expanded then coincide.
 	raw map[string]string
+	// origin records which file each key was last seen in, so a report can name
+	// the file a value came from. It is nil when nobody asked.
+	origin map[string]string
 }
 
 // parse scans src and writes each key/value into out. On a syntax error it
@@ -35,7 +38,13 @@ type expandOptions struct {
 // parseInto is parse with the literal, pre-expansion values also collected into
 // raw when raw is non-nil.
 func parseInto(file string, src []byte, exp expandOptions, out, raw map[string]string) error {
-	p := &parser{file: file, expand: exp.enabled, strict: exp.strict, src: src, line: 1}
+	return parseOrigin(file, src, exp, out, raw, nil)
+}
+
+// parseOrigin is parseInto that also records, in origin, which file supplied
+// each key.
+func parseOrigin(file string, src []byte, exp expandOptions, out, raw, origin map[string]string) error {
+	p := &parser{file: file, expand: exp.enabled, strict: exp.strict, src: src, line: 1, origin: origin}
 	if exp.enabled {
 		p.raw = raw
 	}
@@ -90,6 +99,9 @@ func (p *parser) statement(out map[string]string) error {
 	out[key] = value
 	if p.raw != nil {
 		p.raw[key] = literal
+	}
+	if p.origin != nil {
+		p.origin[key] = p.file
 	}
 	return nil
 }

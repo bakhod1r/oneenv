@@ -12,6 +12,15 @@
 //	oneenv -json                  # print as JSON
 //	oneenv -example               # write .env.example (keys only, values stripped)
 //	oneenv -- go run ./...        # run a command with the env loaded
+//
+// It also has subcommands for working on the files themselves:
+//
+//	oneenv doctor                 # check files, duplicates, empty and shadowed keys
+//	oneenv lint                   # report syntax and naming problems, non-zero exit
+//	oneenv format [-w]            # sort keys, keeping the comments above them
+//	oneenv explain KEY            # where one key's value comes from
+//	oneenv init                   # create a starter .env and .env.example
+//	oneenv migrate [-w] OLD=NEW   # rename keys across the files
 package main
 
 import (
@@ -40,7 +49,77 @@ func main() {
 	}
 }
 
+// subcommands are dispatched before flag parsing, so `oneenv doctor -f .env`
+// reads naturally. Anything starting with '-' is a flag for the default mode.
+func runSubcommand(name string, args []string) (bool, error) {
+	switch name {
+	case "doctor", "lint", "format", "explain", "init", "migrate":
+	default:
+		return false, nil
+	}
+
+	var (
+		files fileList
+		write bool
+	)
+	fs := flag.NewFlagSet("oneenv "+name, flag.ContinueOnError)
+	fs.Var(&files, "f", "env file to read (repeatable)")
+	fs.BoolVar(&write, "w", false, "write changes back to the files")
+	// Parse repeatedly so flags may appear after the positional arguments:
+	// `oneenv explain PORT -f .env` reads more naturally than the reverse.
+	var rest []string
+	for {
+		if err := fs.Parse(args); err != nil {
+			return true, err
+		}
+		args = fs.Args()
+		if len(args) == 0 {
+			break
+		}
+		rest = append(rest, args[0])
+		args = args[1:]
+	}
+	if len(files) == 0 {
+		files = fileList{".env", ".env.local"}
+		if name == "init" {
+			files = fileList{".env"}
+		}
+	}
+
+	switch name {
+	case "doctor":
+		return true, doctor(os.Stdout, files)
+	case "lint":
+		return true, lintFiles(os.Stdout, files)
+	case "format":
+		return true, formatFiles(os.Stdout, files, write)
+	case "init":
+		return true, initFiles(os.Stdout, files)
+	case "explain":
+		if len(rest) != 1 {
+			return true, fmt.Errorf("usage: oneenv explain KEY")
+		}
+		return true, explain(os.Stdout, files, rest[0])
+	default: // migrate
+		renames := make(map[string]string, len(rest))
+		for _, pair := range rest {
+			from, to, ok := strings.Cut(pair, "=")
+			if !ok {
+				return true, fmt.Errorf("migrate: expected OLD=NEW, got %q", pair)
+			}
+			renames[from] = to
+		}
+		return true, migrate(os.Stdout, files, renames, write)
+	}
+}
+
 func run(args []string) error {
+	if len(args) > 0 && !strings.HasPrefix(args[0], "-") {
+		if handled, err := runSubcommand(args[0], args[1:]); handled {
+			return err
+		}
+	}
+
 	var (
 		files    fileList
 		asJSON   bool

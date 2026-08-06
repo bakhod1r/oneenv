@@ -30,13 +30,21 @@ type config struct {
 	mutators     []Mutator
 	validator    func(any) error
 	logger       *slog.Logger
-	table        io.Writer
+	table        bool
+	out          io.Writer
+	baseDir      string
+	strictKeys   bool
+	examplePath  string
+	report       *Report
 	// secretReveal is the number of leading/trailing characters of a secret left
 	// visible in log and table output; secretRevealSet distinguishes an explicit
-	// 0 (mask everything) from "unset, use the default".
+	// 0 (mask everything) from "unset, mask in full". redacted forces a full mask
+	// whatever the reveal says.
 	secretReveal    int
 	secretRevealSet bool
-	rec             *recorder // collects per-field records for the table output
+	redacted        bool
+	rec             *recorder       // collects per-field records for the table output
+	known           map[string]bool // keys the struct consumes, for WithStrictKeys
 	ctx             context.Context
 }
 
@@ -210,34 +218,51 @@ func WithContext(ctx context.Context) Option {
 // survive (see WithSecretReveal), so the plaintext is never logged. Without this
 // option Load stays completely silent.
 //
-//	oneenv.Load(&cfg, oneenv.WithLogger(slog.Default()))
-func WithLogger(l *slog.Logger) Option {
-	return func(c *config) { c.logger = l }
+//	oneenv.Load(&cfg, oneenv.WithLogger())
+//	oneenv.Load(&cfg, oneenv.WithLogger(myLogger)) // a specific logger
+func WithLogger(l ...*slog.Logger) Option {
+	return func(c *config) {
+		if len(l) > 0 && l[0] != nil {
+			c.logger = l[0]
+			return
+		}
+		c.logger = slog.Default()
+	}
 }
 
-// WithTable prints an aligned KEY / VALUE / SOURCE table to w once a Load
-// succeeds, one row per resolved field:
+// WithTable prints an aligned KEY / VALUE / SOURCE table once a Load succeeds,
+// one row per resolved field:
 //
-//	KEY       VALUE          SOURCE
-//	API_KEY   sk-l****9f2a   file
-//	HOST      localhost      default
-//	PORT      8080           env
+//	KEY       VALUE       SOURCE
+//	API_KEY   ****        .env.local
+//	HOST      localhost   default
+//	PORT      8080        env
 //
-// Secret fields are partially masked (see WithSecretReveal); nothing is printed
-// when the Load fails. Pass os.Stdout for a startup banner, or any io.Writer to
-// capture it.
-func WithTable(w io.Writer) Option {
-	return func(c *config) { c.table = w }
+// SOURCE names where the value came from: the .env file that supplied it, "env"
+// for the process environment, "default" for the `default` tag, or "unset".
+//
+// Secret fields are masked in full; WithSecretReveal opens a window on them.
+// Nothing is printed when the Load fails. Output goes to os.Stdout unless
+// WithOutput redirects it.
+func WithTable() Option {
+	return func(c *config) { c.table = true }
 }
 
-// WithSecretReveal sets how many leading and trailing characters of a secret
-// value stay visible in the WithLogger and WithTable output; the middle is
-// replaced by "****". The default is 4, so "sk-live-abcdef9f2a" logs as
-// "sk-l****9f2a".
+// WithOutput redirects everything oneenv prints — the WithTable table and the
+// Print helper — to w instead of os.Stdout. It is the only place a writer is
+// needed, so ordinary calls never mention one.
+func WithOutput(w io.Writer) Option {
+	return func(c *config) { c.out = w }
+}
+
+// WithSecretReveal opens a window on secret values in the WithTable, WithLogger
+// and Print output: the first and last n characters stay visible and the middle
+// becomes "****", so "sk-live-abcdef9f2a" with n=4 shows as "sk-l****9f2a".
 //
-// A value too short to reveal both ends without overlapping is masked
-// completely, so a short secret never leaks in full. Pass 0 to always mask the
-// whole value.
+// Secrets are fully masked by default; this option is the only way to reveal
+// any part of one, and WithRedacted overrides it back to a full mask. A value
+// too short to reveal both ends without overlapping is masked completely, so a
+// short secret never leaks in full.
 func WithSecretReveal(n int) Option {
 	return func(c *config) {
 		if n < 0 {
@@ -245,6 +270,64 @@ func WithSecretReveal(n int) Option {
 		}
 		c.secretReveal, c.secretRevealSet = n, true
 	}
+}
+
+// WithRedacted forces every secret to be masked in full, overriding any
+// WithSecretReveal in the same option set regardless of order. Use it to make
+// the "nothing leaks" policy explicit in code that also sets a reveal window
+// elsewhere, e.g. behind a production flag.
+func WithRedacted() Option {
+	return func(c *config) { c.redacted = true }
+}
+
+// WithBaseDir resolves every relative .env path against dir, so a program can
+// read its configuration from a fixed location without rewriting each file
+// name:
+//
+//	oneenv.Load(&cfg, oneenv.WithBaseDir("/etc/myapp"))  // /etc/myapp/.env
+//
+// Absolute paths are left untouched. An empty dir disables the option.
+func WithBaseDir(dir string) Option {
+	return func(c *config) { c.baseDir = dir }
+}
+
+// WithStrictKeys turns an unrecognized key in a .env file into an error, so a
+// typo is caught at startup instead of silently taking no effect:
+//
+//	unknown environment variable: PORRT (in .env)
+//
+// Every unknown key is reported, joined with any other field error. Keys the
+// struct does consume, including those reached through a prefix or an alias,
+// are never reported.
+func WithStrictKeys() Option {
+	return func(c *config) { c.strictKeys = true }
+}
+
+// WithReport captures the full resolution detail of a Load into r: every key,
+// which file or layer supplied it, its default, and whether it is required.
+// Use it to answer "where did this value come from?" long after the Load:
+//
+//	var rep oneenv.Report
+//	oneenv.Load(&cfg, oneenv.WithReport(&rep))
+//	fmt.Println(rep.Explain("PORT"))
+//
+// Secret values inside the report are stored already masked, following the same
+// WithSecretReveal and WithRedacted policy as the printed table.
+func WithReport(r *Report) Option {
+	return func(c *config) { c.report = r }
+}
+
+// WithWriteExample writes a ready-to-fill .env.example to path every time the
+// Load succeeds, generated from the struct: each key with its `example` or
+// `default` value, preceded by comments carrying the description, the Go type
+// and whether it is required. Secret values are never written.
+//
+//	oneenv.Load(&cfg, oneenv.WithWriteExample(".env.example"))
+//
+// The file is rewritten only when its contents would change, so a watcher on
+// the directory is not woken on every start.
+func WithWriteExample(path string) Option {
+	return func(c *config) { c.examplePath = path }
 }
 
 // WithValidator registers a function called with the fully decoded target once

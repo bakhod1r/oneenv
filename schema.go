@@ -1,7 +1,9 @@
 package oneenv
 
 import (
+	"errors"
 	"reflect"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -18,11 +20,18 @@ type fieldPlan struct {
 	separator   string // element separator for slices/maps
 	desc        string // human description for Usage output
 	required    bool
-	notEmpty    bool         // value must be non-empty when present
-	fromFile    bool         // value names a file whose contents are the real value
-	initField   bool         // initialize nil pointer/slice/map even when unset
-	unset       bool         // remove the variable from the process env after reading
-	secret      bool         // value is sensitive: masked by Redacted output
+	notEmpty    bool     // value must be non-empty when present
+	fromFile    bool     // value names a file whose contents are the real value
+	initField   bool     // initialize nil pointer/slice/map even when unset
+	unset       bool     // remove the variable from the process env after reading
+	secret      bool     // value is sensitive: masked by Redacted output
+	aliases     []string // former spellings of the key, consulted when it is absent
+	deprecated  string   // hint printed when this key is used at all
+	example     string   // sample value written to .env.example
+	pattern     *regexp.Regexp
+	patternSrc  string       // the pattern as written, for error messages
+	enum        []string     // the only accepted values, when non-empty
+	typeName    string       // Go type of the field, for reports and Usage
 	noExpand    bool         // decode the literal value, never the expanded one
 	nested      bool         // field is a struct to recurse into
 	nestedSlice bool         // field is a []struct decoded from indexed keys (KEY_0_*, KEY_1_*)
@@ -119,6 +128,22 @@ func buildSchema(t reflect.Type, cfg config) (*structSchema, error) {
 		// The env-* form always takes priority; the native tag is the fallback,
 		// and for the separator so is envSeparator.
 		plan.desc = firstNonEmpty(f.Tag.Get("env-description"), f.Tag.Get("desc"))
+		plan.typeName = ft.String()
+		plan.example = firstNonEmpty(f.Tag.Get("env-example"), f.Tag.Get("example"))
+		plan.deprecated = firstNonEmpty(f.Tag.Get("env-deprecated"), f.Tag.Get("deprecated"))
+		if alias := firstNonEmpty(f.Tag.Get("env-alias"), f.Tag.Get("alias")); alias != "" {
+			plan.aliases = splitTrim(alias, ",")
+		}
+		if enum := firstNonEmpty(f.Tag.Get("env-enum"), f.Tag.Get("enum")); enum != "" {
+			plan.enum = splitTrim(enum, ",")
+		}
+		if pat := firstNonEmpty(f.Tag.Get("env-pattern"), f.Tag.Get("pattern")); pat != "" {
+			re, err := regexp.Compile(pat)
+			if err != nil {
+				return nil, &FieldError{Field: f.Name, Key: name, Err: errors.Join(ErrBadPattern, err)}
+			}
+			plan.pattern, plan.patternSrc = re, pat
+		}
 		plan.separator = firstNonEmpty(
 			f.Tag.Get("env-separator"),
 			f.Tag.Get("separator"),
@@ -171,6 +196,36 @@ func boolTag(f reflect.StructField, key string, fallback bool) bool {
 		return b
 	}
 	return fallback
+}
+
+// splitTrim splits s on sep and trims each part, dropping empty ones. It reads
+// the comma-separated tag lists (`alias`, `enum`).
+func splitTrim(s, sep string) []string {
+	parts := strings.Split(s, sep)
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if p = strings.TrimSpace(p); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// validate applies the `pattern` and `enum` tags to a raw value before it is
+// decoded, so the error names the rule rather than the type.
+func (fp *fieldPlan) validate(raw string) error {
+	if fp.pattern != nil && !fp.pattern.MatchString(raw) {
+		return &ConstraintError{Rule: "pattern", Want: fp.patternSrc, Err: ErrPattern}
+	}
+	if len(fp.enum) > 0 {
+		for _, allowed := range fp.enum {
+			if raw == allowed {
+				return nil
+			}
+		}
+		return &ConstraintError{Rule: "enum", Want: strings.Join(fp.enum, ", "), Err: ErrNotAllowed}
+	}
+	return nil
 }
 
 // firstNonEmpty returns the first non-empty string among its arguments, or ""
