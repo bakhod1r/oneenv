@@ -6,11 +6,19 @@
 
 **Parse `.env` files straight into your Go structs — zero dependencies, pure stdlib.**
 
+[![Release](https://img.shields.io/github/v/release/bakhod1r/oneenv?sort=semver)](https://github.com/bakhod1r/oneenv/releases)
 [![Go Reference](https://pkg.go.dev/badge/github.com/bakhod1r/oneenv.svg)](https://pkg.go.dev/github.com/bakhod1r/oneenv)
 [![Go Report Card](https://goreportcard.com/badge/github.com/bakhod1r/oneenv)](https://goreportcard.com/report/github.com/bakhod1r/oneenv)
 [![CI](https://github.com/bakhod1r/oneenv/actions/workflows/ci.yml/badge.svg)](https://github.com/bakhod1r/oneenv/actions)
+[![Coverage](https://img.shields.io/badge/coverage-90.2%25-brightgreen)](.github/workflows/test.yml)
 [![Go Version](https://img.shields.io/badge/go-1.26%2B-00ADD8?logo=go)](go.mod)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+[![Stars](https://img.shields.io/github/stars/bakhod1r/oneenv?style=flat)](https://github.com/bakhod1r/oneenv/stargazers)
+[![Forks](https://img.shields.io/github/forks/bakhod1r/oneenv?style=flat)](https://github.com/bakhod1r/oneenv/network/members)
+[![Downloads](https://img.shields.io/github/downloads/bakhod1r/oneenv/total)](https://github.com/bakhod1r/oneenv/releases)
+[![codecov](https://codecov.io/gh/bakhod1r/oneenv/branch/main/graph/badge.svg)](https://codecov.io/gh/bakhod1r/oneenv)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen)](CONTRIBUTING.md)
+[![Made with Go](https://img.shields.io/badge/made%20with-Go-00ADD8?logo=go)](https://go.dev)
 
 **[📖 Full documentation](https://bakhod1r.github.io/oneenv/)**
 

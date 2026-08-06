@@ -300,13 +300,16 @@ func TestUnsupportedMapKey(t *testing.T) {
 
 func TestSkippedAndUnexported(t *testing.T) {
 	type Config struct {
-		hidden string //nolint:unused
+		hidden string
 		Skip   string `env:"-"`
 		Keep   string `env:"KEEP"`
 	}
 	var cfg Config
-	if err := Load(&cfg, WithLookuper(MapLookuper{"KEEP": "y", "Skip": "z"})); err != nil {
+	if err := Load(&cfg, WithLookuper(MapLookuper{"KEEP": "y", "Skip": "z", "hidden": "x"})); err != nil {
 		t.Fatal(err)
+	}
+	if cfg.hidden != "" {
+		t.Fatalf("unexported field was populated: %q", cfg.hidden)
 	}
 	if cfg.Keep != "y" || cfg.Skip != "" {
 		t.Fatalf("%+v", cfg)
