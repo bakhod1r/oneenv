@@ -1,0 +1,33 @@
+name: Feature request
+description: Propose a struct tag, an Option, or new behaviour.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Configuration problem you hit
+      description: What did you have to do by hand because oneenv could not?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed API
+      render: go
+      placeholder: |
+        oneenv.WithSomething(...)
+        // or
+        Field string `env:"KEY,newflag"`
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: constraints
+    attributes:
+      label: Constraints
+      options:
+        - label: This needs no third-party dependency (oneenv is stdlib-only).
+          required: true
+        - label: This does not change the behaviour of existing code.
+          required: true

@@ -42,6 +42,8 @@ type ParseError struct {
 	Err  error  // underlying cause, when there is one
 }
 
+// Error reports the source location and the reason the line could not be
+// parsed.
 func (e *ParseError) Error() string {
 	loc := e.File
 	if loc == "" {
@@ -50,6 +52,7 @@ func (e *ParseError) Error() string {
 	return fmt.Sprintf("oneenv: %s:%d: %s", loc, e.Line, e.Msg)
 }
 
+// Unwrap returns the underlying cause, or nil when there is none.
 func (e *ParseError) Unwrap() error { return e.Err }
 
 // FieldError associates a decoding failure with the struct field and env key
@@ -60,8 +63,10 @@ type FieldError struct {
 	Err   error  // underlying cause
 }
 
+// Error reports the struct field, the env key, and the reason decoding failed.
 func (e *FieldError) Error() string {
 	return fmt.Sprintf("oneenv: field %s (env %q): %v", e.Field, e.Key, e.Err)
 }
 
+// Unwrap returns the underlying decoding error.
 func (e *FieldError) Unwrap() error { return e.Err }

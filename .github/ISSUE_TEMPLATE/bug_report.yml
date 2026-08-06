@@ -1,0 +1,53 @@
+name: Bug report
+description: Something decodes wrong, errors unexpectedly, or panics.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        For anything security-sensitive (leaked or corrupted secrets), do not
+        open an issue — follow [SECURITY.md](../blob/main/SECURITY.md).
+
+  - type: input
+    id: version
+    attributes:
+      label: oneenv version
+      placeholder: v1.2.0
+    validations:
+      required: true
+
+  - type: input
+    id: go
+    attributes:
+      label: Go version and OS
+      placeholder: go1.26.2, darwin/arm64
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Reproduction
+      description: The struct, the .env content, and the options you passed.
+      render: go
+      placeholder: |
+        type Config struct {
+            Port int `env:"PORT"`
+        }
+
+        // .env
+        // PORT=8080
+
+        cfg, err := oneenv.Parse[Config](oneenv.WithFiles(".env"))
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected vs actual
+      placeholder: |
+        Expected: cfg.Port == 8080
+        Actual:   oneenv: field Port (env "PORT"): ...
+    validations:
+      required: true
