@@ -5,6 +5,21 @@ All notable changes to **oneenv** are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.10.2] - 2026-08-07
+
+### Added
+
+- **Row numbers, REQUIRED column, and terminal colors.** Enhanced table output with line numbers, a dedicated `REQUIRED` column, and ANSI terminal color highlights.
+
+### Fixed
+
+- **Cross-platform file watcher event debouncing.** Debounced file notification streams on Linux (`inotify`), macOS (`kqueue`), and Windows (`ReadDirectoryChangesW`) to prevent duplicate reload triggers on atomic file saves.
+- **Windows watcher cancellation deadlock.** Called `CancelIoEx` prior to closing handles to unblock synchronous `ReadDirectoryChangesW` calls cleanly on context cancellation.
+
+### Improved
+
+- **CLI test coverage.** Added comprehensive unit tests for CLI subcommands (`doctor`, `lint`, `format`, `init`, `explain`, `migrate`), elevating statement coverage to 90.9%.
+
 ## [1.10.1] - 2026-08-06
 
 ### Added
