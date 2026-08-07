@@ -81,7 +81,7 @@ func Notify(ctx context.Context, files []string, onChange func()) error {
 		wg.Add(1)
 		go func(h syscall.Handle, names map[string]struct{}) {
 			defer wg.Done()
-			watchDir(h, names, onChange)
+			watchDir(ctx, h, names, onChange)
 		}(h, names)
 	}
 
@@ -99,12 +99,43 @@ func Notify(ctx context.Context, files []string, onChange func()) error {
 // watchDir blocks reading change notifications for one directory, invoking
 // onChange whenever a change touches one of the watched file names. It returns
 // when the handle is closed.
-func watchDir(h syscall.Handle, names map[string]struct{}, onChange func()) {
+func watchDir(ctx context.Context, h syscall.Handle, names map[string]struct{}, onChange func()) {
 	var buf [4096]byte
-	var (
-		mu    sync.Mutex
-		timer *time.Timer
-	)
+	ch := make(chan struct{}, 1)
+
+	// A single worker goroutine debounces events sequentially for this directory,
+	// preventing concurrent execution of onChange callbacks.
+	go func() {
+		var timer *time.Timer
+		var timerCh <-chan time.Time
+		for {
+			select {
+			case <-ctx.Done():
+				if timer != nil {
+					timer.Stop()
+				}
+				return
+			case <-ch:
+				if timer == nil {
+					timer = time.NewTimer(50 * time.Millisecond)
+					timerCh = timer.C
+				} else {
+					if !timer.Stop() {
+						select {
+						case <-timer.C:
+						default:
+						}
+					}
+					timer.Reset(50 * time.Millisecond)
+				}
+			case <-timerCh:
+				timer = nil
+				timerCh = nil
+				onChange()
+			}
+		}
+	}()
+
 	for {
 		var bytesReturned uint32
 		r, _, _ := procReadDirectoryChangesW.Call(
@@ -118,22 +149,13 @@ func watchDir(h syscall.Handle, names map[string]struct{}, onChange func()) {
 			0, // no completion routine
 		)
 		if r == 0 || bytesReturned == 0 {
-			mu.Lock()
-			if timer != nil {
-				timer.Stop()
-			}
-			mu.Unlock()
 			return // handle closed or error: stop watching
 		}
 		if changedWatchedFile(buf[:bytesReturned], names) {
-			mu.Lock()
-			if timer != nil {
-				timer.Stop()
+			select {
+			case ch <- struct{}{}:
+			default:
 			}
-			timer = time.AfterFunc(50*time.Millisecond, func() {
-				onChange()
-			})
-			mu.Unlock()
 		}
 	}
 }
