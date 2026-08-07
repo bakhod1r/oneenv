@@ -32,6 +32,7 @@ const (
 var (
 	modkernel32               = syscall.NewLazyDLL("kernel32.dll")
 	procReadDirectoryChangesW = modkernel32.NewProc("ReadDirectoryChangesW")
+	procCancelIoEx            = modkernel32.NewProc("CancelIoEx")
 )
 
 // fileNotifyInformation mirrors the Win32 FILE_NOTIFY_INFORMATION header; the
@@ -85,9 +86,10 @@ func Notify(ctx context.Context, files []string, onChange func()) error {
 	}
 
 	<-ctx.Done()
-	// Closing the handles makes the pending ReadDirectoryChangesW calls fail,
-	// unblocking and ending the watcher goroutines.
+	// Cancelling pending I/O and closing the handles makes the pending
+	// ReadDirectoryChangesW calls fail, unblocking and ending the watcher goroutines.
 	for _, h := range handles {
+		procCancelIoEx.Call(uintptr(h), 0)
 		syscall.CloseHandle(h)
 	}
 	wg.Wait()
