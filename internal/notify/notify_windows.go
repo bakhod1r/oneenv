@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+	"time"
 	"unsafe"
 )
 
@@ -98,6 +99,10 @@ func Notify(ctx context.Context, files []string, onChange func()) error {
 // when the handle is closed.
 func watchDir(h syscall.Handle, names map[string]struct{}, onChange func()) {
 	var buf [4096]byte
+	var (
+		mu    sync.Mutex
+		timer *time.Timer
+	)
 	for {
 		var bytesReturned uint32
 		r, _, _ := procReadDirectoryChangesW.Call(
@@ -111,10 +116,22 @@ func watchDir(h syscall.Handle, names map[string]struct{}, onChange func()) {
 			0, // no completion routine
 		)
 		if r == 0 {
+			mu.Lock()
+			if timer != nil {
+				timer.Stop()
+			}
+			mu.Unlock()
 			return // handle closed or error: stop watching
 		}
 		if changedWatchedFile(buf[:], names) {
-			onChange()
+			mu.Lock()
+			if timer != nil {
+				timer.Stop()
+			}
+			timer = time.AfterFunc(50*time.Millisecond, func() {
+				onChange()
+			})
+			mu.Unlock()
 		}
 	}
 }

@@ -83,13 +83,28 @@ func Notify(ctx context.Context, files []string, onChange func()) error {
 
 	var buf [4096]byte
 	var events [2]syscall.EpollEvent
+	var pending bool
 	for {
-		n, err := syscall.EpollWait(epfd, events[:], -1)
+		timeout := -1
+		if pending {
+			timeout = 50
+		}
+		n, err := syscall.EpollWait(epfd, events[:], timeout)
 		if err != nil {
 			if err == syscall.EINTR {
 				continue
 			}
 			return err
+		}
+		if n == 0 {
+			if pending {
+				pending = false
+				onChange()
+			}
+			if ctx.Err() != nil {
+				return nil
+			}
+			continue
 		}
 		for _, ev := range events[:n] {
 			if ev.Fd == int32(efd) {
@@ -102,7 +117,7 @@ func Notify(ctx context.Context, files []string, onChange func()) error {
 				break // EAGAIN: drained
 			}
 			if changedWatchedFile(buf[:n], watched) {
-				onChange()
+				pending = true
 			}
 		}
 		if ctx.Err() != nil {

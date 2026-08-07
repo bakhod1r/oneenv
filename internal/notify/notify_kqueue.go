@@ -71,13 +71,15 @@ func Notify(ctx context.Context, files []string, onChange func()) error {
 		}
 	}()
 
-	// A 250ms kevent timeout bounds how quickly we notice ctx cancellation.
-	timeout := syscall.Timespec{Nsec: int64(250 * time.Millisecond)}
 	out := make([]syscall.Kevent_t, len(paths)+1)
 	var pending bool
 	for {
 		if ctx.Err() != nil {
 			return nil
+		}
+		timeout := syscall.Timespec{Nsec: int64(250 * time.Millisecond)}
+		if pending {
+			timeout = syscall.Timespec{Nsec: int64(50 * time.Millisecond)}
 		}
 		n, err := syscall.Kevent(kq, nil, out, &timeout)
 		if err != nil {
