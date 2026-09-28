@@ -1,6 +1,7 @@
 package oneenv
 
 import (
+	"bytes"
 	"strings"
 )
 
@@ -44,6 +45,9 @@ func parseInto(file string, src []byte, exp expandOptions, out, raw map[string]s
 // parseOrigin is parseInto that also records, in origin, which file supplied
 // each key.
 func parseOrigin(file string, src []byte, exp expandOptions, out, raw, origin map[string]string) error {
+	// Windows editors save UTF-8 with a byte-order mark. It is an encoding
+	// marker, not part of the first key.
+	src = bytes.TrimPrefix(src, []byte("\xef\xbb\xbf"))
 	p := &parser{file: file, expand: exp.enabled, strict: exp.strict, src: src, line: 1, origin: origin}
 	if exp.enabled {
 		p.raw = raw

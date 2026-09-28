@@ -46,14 +46,23 @@ type structSchema struct {
 	fields []fieldPlan
 }
 
-var schemaCache sync.Map // reflect.Type -> *structSchema
+var schemaCache sync.Map // schemaKey -> *structSchema
+
+// schemaKey is what a schema depends on: the type, and the tag key its field
+// names are read from. Keyed by type alone, a struct loaded once with "env"
+// tags kept answering from that schema under WithTagKey("cfg").
+type schemaKey struct {
+	t      reflect.Type
+	tagKey string
+}
 
 // schemaFor returns the cached schema for t, building it on first use. When
 // the config carries custom type parsers the cache is bypassed, because the
 // same type may decode differently between calls.
 func schemaFor(t reflect.Type, cfg config) (*structSchema, error) {
+	key := schemaKey{t, cfg.tagKey}
 	if len(cfg.typeParsers) == 0 {
-		if cached, ok := schemaCache.Load(t); ok {
+		if cached, ok := schemaCache.Load(key); ok {
 			return cached.(*structSchema), nil
 		}
 	}
@@ -62,7 +71,7 @@ func schemaFor(t reflect.Type, cfg config) (*structSchema, error) {
 		return nil, err
 	}
 	if len(cfg.typeParsers) == 0 {
-		actual, _ := schemaCache.LoadOrStore(t, s)
+		actual, _ := schemaCache.LoadOrStore(key, s)
 		return actual.(*structSchema), nil
 	}
 	return s, nil

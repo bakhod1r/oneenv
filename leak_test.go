@@ -111,3 +111,36 @@ func TestFileFieldIsTreatedAsSecret(t *testing.T) {
 		t.Errorf("Redacted leaked file contents:\n%s", red)
 	}
 }
+
+// A file saved by Windows Notepad starts with a UTF-8 BOM. It is not part of
+// the first key.
+func TestParseStripsUTF8BOM(t *testing.T) {
+	m := map[string]string{}
+	if err := parse("t", []byte("\xef\xbb\xbfHOST=db\nPORT=5432\n"), false, m); err != nil {
+		t.Fatalf("parse with BOM: %v", err)
+	}
+	if m["HOST"] != "db" {
+		t.Fatalf("HOST = %q, want db (keys: %v)", m["HOST"], m)
+	}
+}
+
+// The schema depends on the tag key. A struct loaded once with the default
+// "env" tags must not keep answering from that schema when a later load asks
+// for a different tag key.
+func TestSchemaCacheRespectsTagKey(t *testing.T) {
+	type Config struct {
+		Port int `env:"ENV_PORT" cfg:"CFG_PORT"`
+	}
+	env := MapLookuper{"ENV_PORT": "1", "CFG_PORT": "2"}
+	var a Config
+	if err := Load(&a, WithLookuper(env)); err != nil {
+		t.Fatal(err)
+	}
+	var b Config
+	if err := Load(&b, WithLookuper(env), WithTagKey("cfg")); err != nil {
+		t.Fatal(err)
+	}
+	if a.Port != 1 || b.Port != 2 {
+		t.Fatalf("env tag gave %d (want 1), cfg tag gave %d (want 2)", a.Port, b.Port)
+	}
+}
