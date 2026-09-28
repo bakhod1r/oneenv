@@ -158,8 +158,9 @@ func exampleComment(fp *fieldPlan, ft reflect.Type, cfg config) string {
 	if fp.secret {
 		parts = append(parts, "secret")
 	}
-	// A secret never carries its example or default into the file.
-	if !fp.secret {
+	// A secret never carries its example or default into the file. A ",file"
+	// field's example is a path, not the secret, so it is kept.
+	if !fp.secret || fp.fromFile {
 		if fp.example != "" {
 			parts = append(parts, "example: "+fp.example)
 		} else if fp.hasDefant && fp.defval != "" {

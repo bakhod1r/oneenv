@@ -190,6 +190,14 @@ func (p *parser) unquoted(vars map[string]string) (value, literal string, err er
 	}
 	raw := p.src[start:p.pos]
 
+	// A value that starts with '#' after the spaces value() skipped is an
+	// inline comment on an empty value ("KEY= # note"), which is how
+	// WriteExample lays out blank keys. A '#' glued to '=' ("COLOR=#fff") is
+	// still a value.
+	if len(raw) > 0 && raw[0] == '#' && start > 0 && isSpaceByte(p.src[start-1]) {
+		return "", "", nil
+	}
+
 	// Strip inline comment: a '#' preceded by whitespace.
 	if i := inlineCommentIndex(raw); i >= 0 {
 		raw = raw[:i]

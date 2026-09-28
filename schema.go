@@ -125,6 +125,9 @@ func buildSchema(t reflect.Type, cfg config) (*structSchema, error) {
 		// Secrets never take part in expansion: a '$' in a password is data, not
 		// a variable reference. ",noexpand" opts a non-secret field out too.
 		plan.noExpand = boolTag(f, "env-noexpand", opts.noExpand) || plan.secret
+		// ",file" reads a secret from disk (Docker/Kubernetes secrets), so the
+		// decoded value is masked like one. The path itself still expands.
+		plan.secret = plan.secret || plan.fromFile
 		// The env-* form always takes priority; the native tag is the fallback,
 		// and for the separator so is envSeparator.
 		plan.desc = firstNonEmpty(f.Tag.Get("env-description"), f.Tag.Get("desc"))

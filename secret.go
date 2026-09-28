@@ -1,6 +1,11 @@
 package oneenv
 
-import "reflect"
+import (
+	"encoding/xml"
+	"fmt"
+	"log/slog"
+	"reflect"
+)
 
 // Secret wraps a sensitive configuration value of type T. It decodes exactly
 // like a bare T (reusing oneenv's setters), but its String, GoString and
@@ -40,6 +45,24 @@ func (s Secret[T]) String() string { return redactedMask }
 // GoString returns the mask for %#v formatting.
 func (s Secret[T]) GoString() string { return redactedMask }
 
+// Format masks every fmt verb. Without it, verbs other than v/s/x/X/q (for
+// example %d on a Secret[int]) bypass String and print the wrapped value.
+func (s Secret[T]) Format(f fmt.State, _ rune) { _, _ = f.Write([]byte(redactedMask)) }
+
+// LogValue masks the value for log/slog. slog resolves a LogValuer before a
+// handler reaches for MarshalText, which renders the real value.
+func (s Secret[T]) LogValue() slog.Value { return slog.StringValue(redactedMask) }
+
+// MarshalYAML masks the value for YAML encoders (gopkg.in/yaml.v3 and
+// compatible), which would otherwise fall back to MarshalText.
+func (s Secret[T]) MarshalYAML() (any, error) { return redactedMask, nil }
+
+// MarshalXML masks the value for encoding/xml, which would otherwise fall back
+// to MarshalText.
+func (s Secret[T]) MarshalXML(e *xml.Encoder, start xml.StartElement) error {
+	return e.EncodeElement(redactedMask, start)
+}
+
 // MarshalJSON masks the value so it never leaks through encoding/json.
 func (s Secret[T]) MarshalJSON() ([]byte, error) { return []byte(`"` + redactedMask + `"`), nil }
 
@@ -56,6 +79,9 @@ func (s *Secret[T]) UnmarshalText(text []byte) error {
 
 // MarshalText renders the real underlying value, so Marshal round-trips a
 // Secret back to its plaintext form in a .env file. Use Redacted to mask it.
+// Encoders that fall back to TextMarshaler (slog, YAML, XML) are masked by
+// LogValue, MarshalYAML and MarshalXML above; any other encoder that calls
+// MarshalText will see the plaintext.
 func (s Secret[T]) MarshalText() ([]byte, error) {
 	t := reflect.TypeFor[T]()
 	return []byte(formatterFor(t)(reflect.ValueOf(s.v), ",")), nil
